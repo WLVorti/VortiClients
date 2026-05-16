@@ -3,6 +3,7 @@
 !/flutter_app/
 !/.gitignore
 !/README.md
+!/API.md
 
 # Keep only Android + shared code inside flutter_app
 flutter_app/ios/
