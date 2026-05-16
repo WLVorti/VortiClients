@@ -1,0 +1,398 @@
+import 'package:flutter/material.dart';
+import '../services/api_service.dart';
+import '../services/mute_service.dart';
+import '../models/models.dart';
+import 'chat_screen.dart';
+import 'auth_screen.dart';
+import 'profile_screen.dart';
+
+class ChatsScreen extends StatefulWidget {
+  final ApiService api;
+
+  const ChatsScreen({super.key, required this.api});
+
+  @override
+  State<ChatsScreen> createState() => _ChatsScreenState();
+}
+
+class _ChatsScreenState extends State<ChatsScreen> {
+  List<Chat> _chats = [];
+  final Map<String, int> _unreadCounts = {};
+  final Set<String> _onlineUsers = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+    _setupWebSocket();
+  }
+
+  Future<void> _loadData() async {
+    print('[ChatsScreen] _loadData started');
+    try {
+      final chats = await widget.api.getChats();
+      print('[ChatsScreen] Got ${chats.length} chats');
+      for (var c in chats) {
+        print('[ChatsScreen] Chat ${c.name}: avatarUrl=${c.avatarUrl}');
+      }
+      if (mounted) {
+        setState(() {
+          _chats = chats;
+          _isLoading = false;
+        });
+        print('[ChatsScreen] _chats set with ${_chats.length} items');
+
+        // Загружаем счётчики непрочитанных
+        final unread = await widget.api.getUnreadCounts();
+        if (mounted) {
+          setState(() {
+            _unreadCounts.clear();
+            _unreadCounts.addAll(unread);
+          });
+        }
+      }
+    } catch (e) {
+      print('[ChatsScreen] Error: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _setupWebSocket() async {
+    widget.api.connectWebSocket();
+    widget.api.onMessage = (msg) async {
+      final type = msg['type'];
+
+      if (type == 'message' && mounted) {
+        final chatId = msg['chatId'];
+        final senderId = msg['userId'];
+        final currentUserId = widget.api.userId;
+
+        // Не увеличиваем счётчик если сообщение от себя
+        if (senderId != currentUserId && !await MuteService.isMuted(chatId)) {
+          setState(() {
+            _unreadCounts[chatId] = (_unreadCounts[chatId] ?? 0) + 1;
+
+            // Обновляем lastMessage в чате
+            final index = _chats.indexWhere((c) => c.id == chatId);
+            if (index != -1) {
+              _chats[index] = Chat(
+                id: _chats[index].id,
+                name: _chats[index].name,
+                type: _chats[index].type,
+                createdAt: _chats[index].createdAt,
+                lastMessage: msg['text'],
+                lastMessageAt: msg['timestamp'],
+                participants: _chats[index].participants,
+                unreadCount: (_unreadCounts[chatId] ?? 0),
+              );
+            }
+          });
+        }
+      }
+
+      if (type == 'online' && mounted) {
+        setState(() {
+          if (msg['status'] == 'online') {
+            _onlineUsers.add(msg['userId']);
+          } else {
+            _onlineUsers.remove(msg['userId']);
+          }
+        });
+      }
+
+      if (type == 'message_edited' && mounted) {
+        _refreshChats();
+      }
+
+      if (type == 'message_deleted' && mounted) {
+        _refreshChats();
+      }
+    };
+  }
+
+  Future<void> _refreshChats() async {
+    final chats = await widget.api.getChats();
+    if (mounted) {
+      setState(() => _chats = chats);
+    }
+  }
+
+  void _markChatAsRead(String chatId) {
+    setState(() {
+      _unreadCounts[chatId] = 0;
+    });
+  }
+
+  Future<void> _createChat() async {
+    final searchController = TextEditingController();
+    List<User> users = [];
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            left: 16,
+            right: 16,
+            top: 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'New Chat',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: searchController,
+                decoration: const InputDecoration(
+                  hintText: 'Search users...',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (value) async {
+                  if (value.length >= 2) {
+                    final result = await widget.api.searchUsers(value);
+                    setSheetState(() => users = result);
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 200,
+                child: ListView.builder(
+                  itemCount: users.length,
+                  itemBuilder: (_, i) => ListTile(
+                    leading: Stack(
+                      children: [
+                        _buildAvatar(users[i].avatarUrl, users[i].username[0]),
+                        if (_onlineUsers.contains(users[i].id))
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    title: Text(users[i].username),
+                    subtitle: _onlineUsers.contains(users[i].id)
+                        ? const Text(
+                            'Online',
+                            style: TextStyle(color: Colors.green),
+                          )
+                        : const Text(
+                            'Offline',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                    onTap: () async {
+                      final chatId = await widget.api.createChat('direct', [
+                        users[i].id,
+                      ]);
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (chatId != null && mounted) {
+                        _loadData();
+                        _openChat(chatId, users[i].username);
+                      }
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openChat(String chatId, String name) {
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => ChatScreen(
+              api: widget.api,
+              chatId: chatId,
+              chatName: name,
+              onMessagesRead: () => _markChatAsRead(chatId),
+            ),
+          ),
+        )
+        .then((_) => _loadData());
+  }
+
+  String _getLastMessageDisplay(String? lastMessage) {
+    if (lastMessage == null || lastMessage.isEmpty) return '';
+    
+    // Check if message contains [File] or [file] - indicating a file message
+    final lowerMessage = lastMessage.toLowerCase();
+    if (lowerMessage.contains('[file]')) {
+      // Extract filename - take everything after [file] or [File]
+      final startIdx = lowerMessage.indexOf('[file]');
+      final fileName = lastMessage.substring(startIdx + 6).trim(); // 6 = length of '[file]'
+      if (fileName.isEmpty) return 'File';
+      
+      final ext = fileName.split('.').last.toLowerCase();
+      final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(ext);
+      
+      return isImage ? 'Photo' : 'File';
+    }
+    
+    return lastMessage;
+  }
+    
+    return lastMessage;
+  }
+
+  Widget _buildAvatar(String? avatarUrl, String fallbackChar) {
+    print(
+      '[Avatar] _buildAvatar called with: avatarUrl=$avatarUrl, fallback=$fallbackChar',
+    );
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      final fullUrl = 'http://77.34.76.27:3000$avatarUrl';
+      print('[Avatar] Loading image: $fullUrl');
+      return SizedBox(
+        width: 40,
+        height: 40,
+        child: ClipOval(
+          child: Image.network(
+            fullUrl,
+            fit: BoxFit.cover,
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+              if (wasSynchronouslyLoaded) return child;
+              return AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: frame != null ? child : CircularProgressIndicator(),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) {
+              print('[Avatar] Error loading $fullUrl: $error');
+              return CircleAvatar(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                child: Text(fallbackChar.toUpperCase()),
+              );
+            },
+          ),
+        ),
+      );
+    }
+    print('[Avatar] Using fallback letter');
+    return CircleAvatar(
+      backgroundColor: Theme.of(context).colorScheme.primary,
+      child: Text(fallbackChar.toUpperCase()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Chats'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.person),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfileScreen(api: widget.api),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _chats.isEmpty
+          ? const Center(child: Text('No chats yet'))
+          : RefreshIndicator(
+              onRefresh: _loadData,
+              child: ListView.builder(
+                itemCount: _chats.length,
+                itemBuilder: (_, i) {
+                  final chat = _chats[i];
+                  final unread = _unreadCounts[chat.id] ?? 0;
+                  print(
+                    '[ChatList] Building tile for ${chat.name}, avatarUrl=${chat.avatarUrl}',
+                  );
+                  return ListTile(
+                    leading: _buildAvatar(
+                      chat.avatarUrl,
+                      chat.name?[0].toUpperCase() ??
+                          chat.participants.first[0].toUpperCase(),
+                    ),
+                    title: Text(chat.name ?? 'Chat'),
+                    subtitle: Text(
+                      _getLastMessageDisplay(chat.lastMessage),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (chat.lastMessageAt != null)
+                          Text(
+                            _formatTime(chat.lastMessageAt!),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        if (unread > 0) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              unread > 99 ? '99+' : unread.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    onTap: () => _openChat(chat.id, chat.name ?? 'Chat'),
+                  );
+                },
+              ),
+            ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _createChat,
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  String _formatTime(int timestamp) {
+    final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    final now = DateTime.now();
+    if (date.day == now.day) {
+      return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    }
+    return '${date.day}/${date.month}';
+  }
+}

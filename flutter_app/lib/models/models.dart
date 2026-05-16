@@ -1,0 +1,214 @@
+class User {
+  final String id;
+  final String username;
+  final String? displayName;
+  final String? bio;
+  final String? avatarUrl;
+  final int createdAt;
+  final bool isOnline;
+  final int? lastSeenAt;
+
+  User({
+    required this.id,
+    required this.username,
+    this.displayName,
+    this.bio,
+    this.avatarUrl,
+    required this.createdAt,
+    this.isOnline = false,
+    this.lastSeenAt,
+  });
+
+  factory User.fromJson(Map<String, dynamic> json) {
+    return User(
+      id: json['id'] ?? '',
+      username: json['username'] ?? '',
+      displayName: json['displayName'] ?? json['username'],
+      bio: json['bio'],
+      avatarUrl: json['avatarUrl'],
+      createdAt: json['created_at'] ?? 0,
+      isOnline: json['is_online'] ?? false,
+      lastSeenAt: json['last_seen_at'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'id': id, 'username': username, 'created_at': createdAt};
+  }
+}
+
+class Profile {
+  final String id;
+  final String username;
+  final String displayName;
+  final String bio;
+  final String? avatarUrl;
+  final int createdAt;
+  final int? lastSeenAt;
+
+  Profile({
+    required this.id,
+    required this.username,
+    required this.displayName,
+    required this.bio,
+    this.avatarUrl,
+    required this.createdAt,
+    this.lastSeenAt,
+  });
+
+  factory Profile.fromJson(Map<String, dynamic> json) {
+    return Profile(
+      id: json['id'] ?? '',
+      username: json['username'] ?? '',
+      displayName: json['displayName'] ?? json['username'] ?? '',
+      bio: json['bio'] ?? '',
+      avatarUrl: json['avatarUrl'] ?? json['avatar_url'],
+      createdAt: json['createdAt'] ?? json['created_at'] ?? 0,
+      lastSeenAt: json['last_seen_at'],
+    );
+  }
+
+  Profile copyWith({String? displayName, String? bio, String? avatarUrl}) {
+    return Profile(
+      id: id,
+      username: username,
+      displayName: displayName ?? this.displayName,
+      bio: bio ?? this.bio,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      createdAt: createdAt,
+    );
+  }
+}
+
+class Chat {
+  final String id;
+  final String? name;
+  final String type;
+  final int createdAt;
+  final String? lastMessage;
+  final int? lastMessageAt;
+  final List<String> participants;
+  final int unreadCount;
+  final String? avatarUrl;
+  final bool isOnline;
+
+  Chat({
+    required this.id,
+    this.name,
+    required this.type,
+    required this.createdAt,
+    this.lastMessage,
+    this.lastMessageAt,
+    required this.participants,
+    this.unreadCount = 0,
+    this.avatarUrl,
+    this.isOnline = false,
+  });
+
+  factory Chat.fromJson(Map<String, dynamic> json) {
+    return Chat(
+      id: json['id'] ?? '',
+      name: json['name'],
+      type: json['type'] ?? 'direct',
+      createdAt: json['created_at'] ?? 0,
+      lastMessage: json['last_message'],
+      lastMessageAt: json['last_message_at'],
+      participants: List<String>.from(json['participants'] ?? []),
+      unreadCount: json['unread_count'] ?? 0,
+      avatarUrl: json['avatarUrl'],
+      isOnline: json['is_online'] ?? false,
+    );
+  }
+}
+
+enum MessageStatus { sent, delivered, read }
+
+class Message {
+  final String id;
+  final String chatId;
+  final String userId;
+  final String text;
+  final String? replyTo;
+  final String? replyText;
+  final String? replyUsername;
+  final String? fileId;
+  final String? fileMimeType;
+  final int createdAt;
+  final bool isDeleted;
+  final bool isEdited;
+  final String? editedText;
+  final MessageStatus status;
+
+  Message({
+    required this.id,
+    required this.chatId,
+    required this.userId,
+    required this.text,
+    this.replyTo,
+    this.replyText,
+    this.replyUsername,
+    this.fileId,
+    this.fileMimeType,
+    required this.createdAt,
+    this.isDeleted = false,
+    this.isEdited = false,
+    this.editedText,
+    this.status = MessageStatus.sent,
+  });
+
+  factory Message.fromJson(Map<String, dynamic> json) {
+    MessageStatus parseStatus(String? s) {
+      switch (s) {
+        case 'read':
+          return MessageStatus.read;
+        case 'delivered':
+          return MessageStatus.delivered;
+        default:
+          return MessageStatus.sent;
+      }
+    }
+
+    final replyData = json['reply'] as Map<String, dynamic>?;
+
+    return Message(
+      id: json['id'] ?? '',
+      chatId: json['chat_id'] ?? '',
+      userId: json['user_id'] ?? '',
+      text: json['text'] ?? '',
+      replyTo: json['reply_to'] ?? replyData?['replyId'],
+      replyText: replyData?['replyText'],
+      replyUsername: replyData?['replyUser'],
+      fileId: json['file_id'],
+      fileMimeType: json['file_mime_type'],
+      createdAt: json['created_at'] ?? 0,
+      isDeleted: json['is_deleted'] ?? false,
+      isEdited: json['is_edited'] ?? false,
+      editedText: json['edited_text'],
+      status: parseStatus(json['status']),
+    );
+  }
+
+  Message copyWith({
+    String? text,
+    bool? isDeleted,
+    bool? isEdited,
+    String? editedText,
+    MessageStatus? status,
+  }) {
+    return Message(
+      id: id,
+      chatId: chatId,
+      userId: userId,
+      text: text ?? this.text,
+      replyTo: replyTo,
+      replyText: replyText,
+      replyUsername: replyUsername,
+      fileId: fileId,
+      createdAt: createdAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+      isEdited: isEdited ?? this.isEdited,
+      editedText: editedText ?? this.editedText,
+      status: status ?? this.status,
+    );
+  }
+}

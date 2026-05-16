@@ -1,0 +1,52 @@
+# Server
+node_modules/
+src/
+uploads/
+ssl/
+messenger.db
+messenger.db-shm
+messenger.db-wal
+package.json
+package-lock.json
+tsconfig.json
+serve-client.js
+run-tests.bat
+tests/
+test_results.log
+
+# Docs (not part of client source)
+API.md
+CHANGELOG.md
+
+# Environment
+.env
+.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Flutter
+flutter_app/.dart_tool/
+flutter_app/.packages
+flutter_app/.pub/
+flutter_app/build/
+flutter_app/.flutter-plugins
+flutter_app/.flutter-plugins-dependencies
+flutter_app/pubspec.lock
+flutter_app/.metadata
+flutter_app/android/.gradle/
+flutter_app/android/local.properties
+flutter_app/android/key.properties
+flutter_app/android/app/build/
+flutter_app/ios/Pods/
+flutter_app/ios/.symlinks/
+flutter_app/ios/Flutter/Flutter.framework
+flutter_app/ios/Flutter/Flutter.podspec
+flutter_app/ios/Runner.xcworkspace/
+flutter_app/ios/Podfile.lock

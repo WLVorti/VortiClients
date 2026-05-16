@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "116660736245",
+    "project_id": "vorti-messenger",
+    "storage_bucket": "vorti-messenger.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:116660736245:android:75b0bcaed6929b25d575bc",
+        "android_client_info": {
+          "package_name": "com.wlvorti.vorti_messenger"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCzQ_IG9cZ_BXvhvZycu46uGEDLIs2PKOg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
