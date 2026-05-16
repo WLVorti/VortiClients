@@ -1,37 +1,20 @@
-# Server
-node_modules/
-src/
-uploads/
-ssl/
-messenger.db
-messenger.db-shm
-messenger.db-wal
-package.json
-package-lock.json
-tsconfig.json
-serve-client.js
-run-tests.bat
-tests/
-test_results.log
+# Exclude everything except flutter_app/android/, flutter_app/lib/ and essentials
+/*
+!/flutter_app/
+!/.gitignore
+!/README.md
 
-# Docs (not part of client source)
-API.md
-CHANGELOG.md
+# Keep only Android + shared code inside flutter_app
+flutter_app/ios/
+flutter_app/linux/
+flutter_app/macos/
+flutter_app/web/
+flutter_app/windows/
+flutter_app/flutter_01.png
+flutter_app/flutter_02.png
+flutter_app/README.md
 
-# Environment
-.env
-.env.example
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.idea/
-*.iml
-.vscode/
-
-# Flutter
+# Flutter build artifacts
 flutter_app/.dart_tool/
 flutter_app/.packages
 flutter_app/.pub/
@@ -44,9 +27,12 @@ flutter_app/android/.gradle/
 flutter_app/android/local.properties
 flutter_app/android/key.properties
 flutter_app/android/app/build/
-flutter_app/ios/Pods/
-flutter_app/ios/.symlinks/
-flutter_app/ios/Flutter/Flutter.framework
-flutter_app/ios/Flutter/Flutter.podspec
-flutter_app/ios/Runner.xcworkspace/
-flutter_app/ios/Podfile.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.iml
+.vscode/
