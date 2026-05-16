@@ -18,42 +18,14 @@ flutter run
 
 ## Подключение к серверу
 
-По умолчанию клиент подключён к серверу:
+Клиент подключается к серверу Vorti:
 
 | Протокол | Адрес |
 |----------|-------|
 | REST API | `http://77.34.76.27:3000` |
 | WebSocket | `ws://77.34.76.27:3000` |
 
-### Как сменить сервер
-
-Адрес сервера задаётся в `lib/services/api_service.dart:13-14`:
-
-```dart
-static const String baseUrl = 'http://77.34.76.27:3000';
-static const String wsUrl = 'ws://77.34.76.27:3000';
-```
-
-Замените IP/домен на свой, затем пересоберите:
-
-```bash
-flutter run
-```
-
-### Запуск своего сервера
-
-Серверная часть находится в отдельном репозитории. Для локальной разработки:
-
-```bash
-# Склонировать сервер
-git clone <server-repo>
-cd server
-npm install
-cp .env.example .env   # отредактировать JWT_SECRET
-npm run dev             # сервер на http://localhost:3000
-```
-
-Затем в клиенте указать `baseUrl = 'http://localhost:3000'`.
+Адрес жёстко прописан в `lib/services/api_service.dart:13-14` и не требует настройки. После `flutter pub get` и `flutter run` приложение сразу работает.
 
 ## Сборка APK
 
