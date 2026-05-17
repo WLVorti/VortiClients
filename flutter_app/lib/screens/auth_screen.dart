@@ -174,7 +174,21 @@ class _AuthScreenState extends State<AuthScreen> {
       }
     } else {
       setState(() {
-        _error = result['message'] ?? 'Ошибка';
+        final msg = result['message'] as String? ?? 'Ошибка';
+        if (msg == 'Invalid username or password') {
+          _error = 'Пользователь не найден.\nЕсли у вас нет аккаунта — сначала зарегистрируйтесь.';
+        } else if (msg.startsWith('Invalid username or password')) {
+          final attempts = msg.split(' ').last;
+          _error = 'Неверный пароль. Осталось попыток: $attempts';
+        } else if (msg.startsWith('Account locked')) {
+          final match = RegExp(r'(\d+)').firstMatch(msg);
+          final secs = match?.group(1) ?? '?';
+          _error = 'Аккаунт заблокирован. Попробуйте через $secs секунд.';
+        } else if (msg.startsWith('Too many failed attempts')) {
+          _error = 'Слишком много неудачных попыток. Аккаунт заблокирован на 15 минут.';
+        } else {
+          _error = msg;
+        }
       });
     }
   }

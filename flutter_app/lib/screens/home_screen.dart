@@ -74,9 +74,9 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
             label: 'Account',
-          ),
-        ],
-      ),
+                        ),
+                      ],
+                    ),
     );
   }
 }
@@ -522,6 +522,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
   List<Chat> _groups = [];
   bool _isLoading = true;
   final Set<String> _onlineUsers = {};
+  Map<String, int> _groupUnreadCounts = {};
   Function(Map<String, dynamic>)? _messageHandler;
   VoidCallback? _onlineHandler;
 
@@ -560,6 +561,33 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     
     _messageHandler = (msg) {
       final type = msg['type'];
+      if (type == 'message' && mounted) {
+        final chatId = msg['chatId'];
+        final senderId = msg['userId'];
+        final currentUserId = widget.api.userId;
+
+        final index = _groups.indexWhere((c) => c.id == chatId);
+        if (index != -1 && senderId != currentUserId) {
+          MuteService.isMuted(chatId).then((muted) {
+            if (!muted && mounted) {
+              setState(() {
+                _groupUnreadCounts[chatId] = (_groupUnreadCounts[chatId] ?? 0) + 1;
+                _groups[index] = Chat(
+                  id: _groups[index].id,
+                  name: _groups[index].name,
+                  type: _groups[index].type,
+                  createdAt: _groups[index].createdAt,
+                  lastMessage: msg['text'],
+                  lastMessageAt: msg['timestamp'],
+                  participants: _groups[index].participants,
+                  unreadCount: (_groupUnreadCounts[chatId] ?? 0),
+                  avatarUrl: _groups[index].avatarUrl,
+                );
+              });
+            }
+          });
+        }
+      }
       if (type == 'online' && mounted) {
         setState(() {
           _onlineUsers.clear();
@@ -623,6 +651,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                     itemCount: _groups.length,
                     itemBuilder: (_, i) {
                       final group = _groups[i];
+                      final unread = _groupUnreadCounts[group.id] ?? 0;
                       return ListTile(
                         leading: _buildAvatar(
                           group.avatarUrl,
@@ -634,7 +663,28 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        trailing: PopupMenuButton<String>(
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (unread > 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  unread > 99 ? '99+' : unread.toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            PopupMenuButton<String>(
                           onSelected: (value) {
                             if (value == 'info') {
                               Navigator.of(context).push(
@@ -654,7 +704,12 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                             ),
                           ],
                         ),
+                          ],
+                        ),
                         onTap: () {
+                          setState(() {
+                            _groupUnreadCounts[group.id] = 0;
+                          });
                           Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => ChatScreen(

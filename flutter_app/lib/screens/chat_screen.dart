@@ -244,7 +244,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       });
 
       if (message.userId == _currentUserId) {
-        _pendingMessageIds.remove(msg['id'] as String? ?? '');
+        _pendingMessageTimer?.cancel();
+        _pendingMessageIds.remove(msg['tempId'] as String? ?? '');
         _sendInProgress = false;
       }
 
@@ -456,7 +457,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _pendingMessageIds.add(pendingId);
     _sendInProgress = true;
 
-    widget.api.sendMessage(widget.chatId, text, replyTo: replyTo);
+    widget.api.sendMessage(widget.chatId, text, replyTo: replyTo, tempId: pendingId);
 
     _messageController.clear();
     _cancelReply();

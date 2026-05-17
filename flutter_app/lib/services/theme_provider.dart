@@ -138,7 +138,6 @@ class ThemeProvider extends ChangeNotifier {
   
   void setCurrentUser(String? userId) {
     _currentUserId = userId;
-    loadTheme();
   }
   
   String _getKey(String baseKey) {

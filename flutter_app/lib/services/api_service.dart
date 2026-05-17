@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart';
 import '../models/models.dart';
 import '../models/account.dart';
+import 'theme_provider.dart';
 
 class ApiService {
   static const String baseUrl = 'http://77.34.76.27:3000';
@@ -373,6 +374,9 @@ class ApiService {
     
     await _storage.write(key: 'token', value: token);
     await _storage.write(key: 'userId', value: userId);
+
+    ThemeProvider().setCurrentUser(userId);
+    await ThemeProvider.loadTheme();
     
     // Try to get profile info
     Profile? profile;
@@ -739,7 +743,7 @@ class ApiService {
     }
   }
 
-  Future<void> sendMessageViaWs(String chatId, String text, {String? replyTo}) async {
+  Future<void> sendMessageViaWs(String chatId, String text, {String? replyTo, String? tempId}) async {
     if (_wsChannel?.sink != null) {
       try {
         _wsChannel!.sink.add(
@@ -748,6 +752,7 @@ class ApiService {
             'chatId': chatId,
             'text': text,
             if (replyTo != null) 'replyTo': replyTo,
+            if (tempId != null) 'tempId': tempId,
           }),
         );
         return;
@@ -773,8 +778,8 @@ class ApiService {
     }
   }
 
-  void sendMessage(String chatId, String text, {String? replyTo}) {
-    sendMessageViaWs(chatId, text, replyTo: replyTo);
+  void sendMessage(String chatId, String text, {String? replyTo, String? tempId}) {
+    sendMessageViaWs(chatId, text, replyTo: replyTo, tempId: tempId);
   }
 
   void sendTyping(String chatId, bool isTyping) {
