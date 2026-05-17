@@ -1,8 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:image_cropper/image_cropper.dart';
 import '../services/api_service.dart';
 import '../services/theme_provider.dart';
 import '../models/models.dart';
@@ -162,9 +159,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final result = await FilePicker.platform.pickFiles(type: FileType.image);
     if (result != null && result.files.single.path != null) {
       try {
-        // Hide system UI so status bar doesn't overlap cropper toolbar
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-        
         final croppedFile = await ImageCropper().cropImage(
           sourcePath: result.files.single.path!,
           uiSettings: [
@@ -174,6 +168,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               toolbarWidgetColor: Colors.white,
               initAspectRatio: CropAspectRatioPreset.square,
               lockAspectRatio: false,
+              statusBarColor: _themeProvider.primaryColor,
             ),
           ],
         );
@@ -189,9 +184,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         } else {
           if (mounted) setState(() => _isUploadingAvatar = false);
         }
-      } finally {
-        // Restore system UI
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       }
     } else {
       if (mounted) setState(() => _isUploadingAvatar = false);

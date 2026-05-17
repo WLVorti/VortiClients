@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
@@ -354,31 +353,27 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       type: FileType.image,
     );
     if (result != null && result.files.single.path != null) {
-      try {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-        final croppedFile = await ImageCropper().cropImage(
-          sourcePath: result.files.single.path!,
-          aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-          compressQuality: 80,
-          maxWidth: 512,
-          maxHeight: 512,
-          uiSettings: [
-            AndroidUiSettings(
-              toolbarTitle: 'Crop Avatar',
-              toolbarColor: Theme.of(context).colorScheme.primary,
-              toolbarWidgetColor: Colors.white,
-              initAspectRatio: CropAspectRatioPreset.square,
-              lockAspectRatio: true,
-            ),
-            IOSUiSettings(title: 'Crop Avatar', aspectRatioLockEnabled: true),
-          ],
-        );
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: result.files.single.path!,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        compressQuality: 80,
+        maxWidth: 512,
+        maxHeight: 512,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Crop Avatar',
+            toolbarColor: Theme.of(context).colorScheme.primary,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: true,
+            statusBarColor: Theme.of(context).colorScheme.primary,
+          ),
+          IOSUiSettings(title: 'Crop Avatar', aspectRatioLockEnabled: true),
+        ],
+      );
 
-        if (croppedFile == null) return null;
-        return File(croppedFile.path);
-      } finally {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      }
+      if (croppedFile == null) return null;
+      return File(croppedFile.path);
     }
     return null;
   }
