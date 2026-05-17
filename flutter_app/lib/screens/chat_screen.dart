@@ -16,6 +16,8 @@ import 'user_profile_screen.dart';
 import 'call_screen.dart';
 import 'image_viewer_screen.dart';
 
+const int _maxMessageLength = 10000;
+
 class ChatScreen extends StatefulWidget {
   final ApiService api;
   final String chatId;
@@ -451,6 +453,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final text = _messageController.text.trim();
     if (text.isEmpty && _replyToMessageId == null) return;
 
+    if (text.length > _maxMessageLength) {
+      _showSnackBar('Сообщение слишком длинное (макс. $_maxMessageLength символов)');
+      return;
+    }
+
     final replyTo = _replyToMessageId;
     final pendingId = DateTime.now().millisecondsSinceEpoch.toString();
 
@@ -518,6 +525,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _saveEdit() async {
     final newText = _messageController.text.trim();
     if (newText.isEmpty || _editingMessageId == null) return;
+
+    if (newText.length > _maxMessageLength) {
+      _showSnackBar('Сообщение слишком длинное (макс. $_maxMessageLength символов)');
+      return;
+    }
 
     final success = await widget.api.editMessage(_editingMessageId!, newText);
     if (success) {
