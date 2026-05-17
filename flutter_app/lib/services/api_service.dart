@@ -377,6 +377,7 @@ class ApiService {
 
     ThemeProvider().setCurrentUser(userId);
     await ThemeProvider.loadTheme();
+    await registerSavedDevice();
     
     // Try to get profile info
     Profile? profile;

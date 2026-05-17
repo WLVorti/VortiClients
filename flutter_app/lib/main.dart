@@ -56,12 +56,10 @@ class _VortiAppState extends State<VortiApp> {
     ApiService.addLog('_checkAuth: initializing MuteService...');
     await MuteService.init();
     ApiService.addLog('_checkAuth: MuteService done');
-    if (_api.token != null) {
-      MuteService.setApi(_api);
-      ApiService.addLog('_checkAuth: initializing notifications...');
-      await _initNotifications();
-      ApiService.addLog('_checkAuth: notifications done');
-    }
+    MuteService.setApi(_api);
+    ApiService.addLog('_checkAuth: initializing notifications...');
+    await _initNotifications();
+    ApiService.addLog('_checkAuth: notifications done');
 
     if (mounted) {
       setState(() => _isLoading = false);
@@ -102,9 +100,11 @@ class _VortiAppState extends State<VortiApp> {
     ApiService.addLog('_initNotifications: getToken()...');
     final token = await _notifications.getToken();
     ApiService.addLog('_initNotifications: getToken() done, token=$token');
-    if (token != null && _api.token != null) {
-      await _api.registerDevice(token, 'android');
+    if (token != null) {
       await _api.saveFcmToken(token);
+      if (_api.token != null) {
+        await _api.registerDevice(token, 'android');
+      }
     }
   }
 
