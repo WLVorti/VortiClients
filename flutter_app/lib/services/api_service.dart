@@ -376,7 +376,7 @@ class ApiService {
     await _storage.write(key: 'userId', value: userId);
 
     ThemeProvider().setCurrentUser(userId);
-    await ThemeProvider.loadTheme();
+    await ThemeProvider().loadTheme();
     await registerSavedDevice();
     
     // Try to get profile info
