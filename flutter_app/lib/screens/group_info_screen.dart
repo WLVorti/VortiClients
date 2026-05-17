@@ -285,15 +285,15 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           ),
           FilledButton(
             onPressed: () async {
-              final success = await widget.api.deleteGroup(widget.chatId);
+              final errorMsg = await widget.api.deleteGroup(widget.chatId);
               if (mounted) {
                 Navigator.pop(ctx);
-                if (success) {
+                if (errorMsg == null) {
                   Navigator.pop(context);
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Failed to delete group. Try again.'),
+                    SnackBar(
+                      content: Text(errorMsg),
                       backgroundColor: Colors.red,
                     ),
                   );
@@ -501,14 +501,14 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     );
 
     if (confirm == true) {
-      final success = await widget.api.leaveGroup(widget.chatId);
+      final errorMsg = await widget.api.leaveGroup(widget.chatId);
       if (mounted) {
-        if (success) {
+        if (errorMsg == null) {
           Navigator.pop(context);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to leave group. Try again.'),
+            SnackBar(
+              content: Text(errorMsg),
               backgroundColor: Colors.red,
             ),
           );

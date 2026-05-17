@@ -519,29 +519,33 @@ class ApiService {
     );
   }
 
-  Future<bool> leaveGroup(String chatId) async {
+  Future<String?> leaveGroup(String chatId) async {
     try {
       final res = await _client.delete(
         Uri.parse('$baseUrl/chats/$chatId/leave'),
         headers: _headers,
       );
-      return res.statusCode == 200;
+      if (res.statusCode == 200) return null;
+      final data = jsonDecode(res.body);
+      return data['message'] as String? ?? 'Failed to leave group';
     } catch (e) {
       ApiService.addLog('Leave group error: $e');
-      return false;
+      return 'Failed to leave group';
     }
   }
 
-  Future<bool> deleteGroup(String chatId) async {
+  Future<String?> deleteGroup(String chatId) async {
     try {
       final res = await _client.delete(
         Uri.parse('$baseUrl/chats/$chatId'),
         headers: _headers,
       );
-      return res.statusCode == 200;
+      if (res.statusCode == 200) return null;
+      final data = jsonDecode(res.body);
+      return data['message'] as String? ?? 'Failed to delete group';
     } catch (e) {
       ApiService.addLog('Delete group error: $e');
-      return false;
+      return 'Failed to delete group';
     }
   }
 
