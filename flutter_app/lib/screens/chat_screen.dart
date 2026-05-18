@@ -173,7 +173,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
       });
     } catch (e) {
-      debugPrint('Failed to start recording: $e');
+      ApiService.addLog('_startRecording: error=$e');
       _showSnackBar('Failed to start recording');
     }
   }
@@ -205,6 +205,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               mimeType: uploadResult['mimeType'],
             );
           } else {
+            ApiService.addLog('_stopRecording: uploadFile returned null for path=$path');
             _showSnackBar('Upload failed');
           }
 
@@ -212,7 +213,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      debugPrint('Failed to stop recording: $e');
+      ApiService.addLog('_stopRecording: error=$e path=$_recordingPath');
       setState(() => _isRecording = false);
       _showSnackBar('Failed to send voice message');
     }
@@ -260,6 +261,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (type == 'error') {
       final errorMsg = msg['message'] as String? ?? 'Send failed';
       final failedMsgId = msg['tempId'] as String?;
+      
+      ApiService.addLog('_handleMessage: server error chatId=${widget.chatId} tempId=$failedMsgId error=$errorMsg');
       
       // Restore failed message text
       final failedText = msg['text'] as String?;
@@ -479,7 +482,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _sendInProgress = false;
       
       if (_pendingMessageIds.remove(pendingId)) {
-        // Сообщение не было подтверждено сервером — восстанавливаем
+        ApiService.addLog('_sendMessage: timeout chatId=${widget.chatId} pendingId=$pendingId textLen=${text.length}');
         _messageController.text = text;
         if (replyTo != null) {
           setState(() {

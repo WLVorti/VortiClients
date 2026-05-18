@@ -768,13 +768,15 @@ class ApiService {
         );
         return;
       } catch (e) {
-        print('WS send error: $e');
+        ApiService.addLog('sendMessageViaWs: WS send error for chatId=$chatId tempId=$tempId: $e');
       }
+    } else {
+      ApiService.addLog('sendMessageViaWs: WS null for chatId=$chatId tempId=$tempId, falling back to REST');
     }
-    await sendMessageViaRest(chatId, text, replyTo: replyTo);
+    await sendMessageViaRest(chatId, text, replyTo: replyTo, tempId: tempId);
   }
 
-  Future<void> sendMessageViaRest(String chatId, String text, {String? replyTo}) async {
+  Future<void> sendMessageViaRest(String chatId, String text, {String? replyTo, String? tempId}) async {
     try {
       final res = await _client.post(
         Uri.parse('$baseUrl/chats/$chatId/messages'),
@@ -783,9 +785,11 @@ class ApiService {
       );
       if (res.statusCode == 200) {
         // Don't call onMessage here - server will broadcast it back via WebSocket
+      } else {
+        ApiService.addLog('sendMessageViaRest: HTTP ${res.statusCode} for chatId=$chatId tempId=$tempId: ${res.body}');
       }
     } catch (e) {
-      print('REST send error: $e');
+      ApiService.addLog('sendMessageViaRest: exception for chatId=$chatId tempId=$tempId: $e');
     }
   }
 
