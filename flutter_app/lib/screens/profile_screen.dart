@@ -1,5 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import '../services/api_service.dart';
 import '../services/theme_provider.dart';
 import '../models/models.dart';
@@ -158,32 +161,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isUploadingAvatar = true);
     final result = await FilePicker.platform.pickFiles(type: FileType.image);
     if (result != null && result.files.single.path != null) {
-      try {
-        final croppedFile = await ImageCropper().cropImage(
-          sourcePath: result.files.single.path!,
-          uiSettings: [
-            AndroidUiSettings(
-              toolbarTitle: 'Crop avatar',
-              toolbarColor: _themeProvider.primaryColor,
-              toolbarWidgetColor: Colors.white,
-              initAspectRatio: CropAspectRatioPreset.square,
-              lockAspectRatio: false,
-              statusBarColor: _themeProvider.primaryColor,
-            ),
-          ],
-        );
-        if (croppedFile != null) {
-          final file = File(croppedFile.path);
-          final avatarUrl = await widget.api.uploadAvatar(file);
-          if (mounted) {
-            setState(() {
-              _profile = _profile?.copyWith(avatarUrl: avatarUrl);
-              _isUploadingAvatar = false;
-            });
-          }
-        } else {
-          if (mounted) setState(() => _isUploadingAvatar = false);
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: result.files.single.path!,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Crop avatar',
+            toolbarColor: _themeProvider.primaryColor,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: false,
+            statusBarColor: _themeProvider.primaryColor,
+          ),
+        ],
+      );
+      if (croppedFile != null) {
+        final file = File(croppedFile.path);
+        final avatarUrl = await widget.api.uploadAvatar(file);
+        if (mounted) {
+          setState(() {
+            _profile = _profile?.copyWith(avatarUrl: avatarUrl);
+            _isUploadingAvatar = false;
+          });
         }
+      } else {
+        if (mounted) setState(() => _isUploadingAvatar = false);
       }
     } else {
       if (mounted) setState(() => _isUploadingAvatar = false);

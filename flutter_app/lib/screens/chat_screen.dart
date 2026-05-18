@@ -935,7 +935,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             ),
                             textInputAction: TextInputAction.newline,
                             onChanged: (value) {
-                              _sendTyping();
                               _saveDraft(value);
                             },
                         ),
