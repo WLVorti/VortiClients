@@ -153,7 +153,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
     }
   }
 
-  Widget _buildAvatar(String? avatarUrl, String fallbackChar) {
+  Widget _buildAvatar(String? avatarUrl, String fallbackChar, {String? userId}) {
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       final fullUrl = 'http://77.34.76.27:3000$avatarUrl';
       return CircleAvatar(
