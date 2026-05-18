@@ -422,6 +422,24 @@ class ApiService {
     return null;
   }
 
+  Future<List<MessageSearchResult>> searchMessages(String query, {int limit = 50, int? before}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/search/messages').replace(queryParameters: {
+        'q': query,
+        'limit': limit.toString(),
+        if (before != null) 'before': before.toString(),
+      });
+      final res = await _client.get(uri, headers: _headers);
+      final data = jsonDecode(res.body);
+      if (data['status'] == 'success') {
+        return (data['messages'] as List).map((m) => MessageSearchResult.fromJson(m)).toList();
+      }
+    } catch (e) {
+      ApiService.addLog('searchMessages error: $e');
+    }
+    return [];
+  }
+
   Future<List<User>> searchUsers(String query) async {
     final res = await _client.get(
       Uri.parse('$baseUrl/users?search=$query'),

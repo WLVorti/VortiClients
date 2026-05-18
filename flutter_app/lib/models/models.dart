@@ -1,3 +1,41 @@
+class MessageSearchResult {
+  final String id;
+  final String chatId;
+  final String userId;
+  final String text;
+  final int createdAt;
+  final String? fileId;
+  final String? fileMimeType;
+  final String senderName;
+  final String chatName;
+
+  MessageSearchResult({
+    required this.id,
+    required this.chatId,
+    required this.userId,
+    required this.text,
+    required this.createdAt,
+    this.fileId,
+    this.fileMimeType,
+    required this.senderName,
+    required this.chatName,
+  });
+
+  factory MessageSearchResult.fromJson(Map<String, dynamic> json) {
+    return MessageSearchResult(
+      id: json['id'] ?? '',
+      chatId: json['chatId'] ?? '',
+      userId: json['userId'] ?? '',
+      text: json['text'] ?? '',
+      createdAt: json['createdAt'] ?? 0,
+      fileId: json['fileId'],
+      fileMimeType: json['fileMimeType'],
+      senderName: json['senderName'] ?? '',
+      chatName: json['chatName'] ?? '',
+    );
+  }
+}
+
 class User {
   final String id;
   final String username;
