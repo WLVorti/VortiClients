@@ -336,6 +336,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       chat.avatarUrl,
                       chat.name?[0].toUpperCase() ??
                           chat.participants.first[0].toUpperCase(),
+                      userId: chat.id,
                     ),
                     title: Text(chat.name ?? 'Chat'),
                     subtitle: Text(

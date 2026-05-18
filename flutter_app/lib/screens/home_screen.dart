@@ -427,6 +427,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                             chat.avatarUrl,
                             chat.name?[0].toUpperCase() ??
                                 chat.participants.first[0].toUpperCase(),
+                            userId: chat.id,
                           ),
                           if (chat.isOnline ||
                               _onlineUsers.contains(otherUserId))
@@ -660,6 +661,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                         leading: _buildAvatar(
                           group.avatarUrl,
                           group.name?[0].toUpperCase() ?? 'G',
+                          userId: group.id,
                         ),
                         title: Text(
                           group.name ?? 'Group',
