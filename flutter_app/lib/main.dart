@@ -46,20 +46,24 @@ class _VortiAppState extends State<VortiApp> {
   }
 
   Future<void> _checkAuth() async {
-    ApiService.addLog('_checkAuth: loading credentials...');
-    await _api.loadCredentials();
-    ApiService.addLog('_checkAuth: credentials loaded');
-    ThemeProvider().setCurrentUser(_api.userId);
-    ApiService.addLog('_checkAuth: loading theme...');
-    await ThemeProvider().loadTheme();
-    ApiService.addLog('_checkAuth: theme loaded');
-    ApiService.addLog('_checkAuth: initializing MuteService...');
-    await MuteService.init();
-    ApiService.addLog('_checkAuth: MuteService done');
-    MuteService.setApi(_api);
-    ApiService.addLog('_checkAuth: initializing notifications...');
-    await _initNotifications();
-    ApiService.addLog('_checkAuth: notifications done');
+    try {
+      ApiService.addLog('_checkAuth: loading credentials...');
+      await _api.loadCredentials().timeout(const Duration(seconds: 10));
+      ApiService.addLog('_checkAuth: credentials loaded');
+      ThemeProvider().setCurrentUser(_api.userId);
+      ApiService.addLog('_checkAuth: loading theme...');
+      await ThemeProvider().loadTheme();
+      ApiService.addLog('_checkAuth: theme loaded');
+      ApiService.addLog('_checkAuth: initializing MuteService...');
+      await MuteService.init();
+      ApiService.addLog('_checkAuth: MuteService done');
+      MuteService.setApi(_api);
+      ApiService.addLog('_checkAuth: initializing notifications...');
+      await _initNotifications();
+      ApiService.addLog('_checkAuth: notifications done');
+    } catch (e) {
+      ApiService.addLog('_checkAuth error: $e');
+    }
 
     if (mounted) {
       setState(() => _isLoading = false);
