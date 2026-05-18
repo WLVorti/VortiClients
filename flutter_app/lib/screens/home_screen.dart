@@ -657,7 +657,13 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                           group.avatarUrl,
                           group.name?[0].toUpperCase() ?? 'G',
                         ),
-                        title: Text(group.name ?? 'Group'),
+                        title: Text(
+                          group.name ?? 'Group',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         subtitle: Text(
                           group.lastMessage ?? '',
                           maxLines: 1,
