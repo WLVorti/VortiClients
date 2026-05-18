@@ -161,30 +161,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isUploadingAvatar = true);
     final result = await FilePicker.platform.pickFiles(type: FileType.image);
     if (result != null && result.files.single.path != null) {
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: result.files.single.path!,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'Crop avatar',
-            toolbarColor: _themeProvider.primaryColor,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: false,
-            statusBarColor: _themeProvider.primaryColor,
-          ),
-        ],
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.manual,
+        overlays: SystemUiOverlay.values,
       );
-      if (croppedFile != null) {
-        final file = File(croppedFile.path);
-        final avatarUrl = await widget.api.uploadAvatar(file);
-        if (mounted) {
-          setState(() {
-            _profile = _profile?.copyWith(avatarUrl: avatarUrl);
-            _isUploadingAvatar = false;
-          });
+      try {
+        final croppedFile = await ImageCropper().cropImage(
+          sourcePath: result.files.single.path!,
+          uiSettings: [
+            AndroidUiSettings(
+              toolbarTitle: 'Crop avatar',
+              toolbarColor: _themeProvider.primaryColor,
+              toolbarWidgetColor: Colors.white,
+              initAspectRatio: CropAspectRatioPreset.square,
+              lockAspectRatio: false,
+              statusBarColor: _themeProvider.primaryColor,
+            ),
+          ],
+        );
+        if (croppedFile != null) {
+          final file = File(croppedFile.path);
+          final avatarUrl = await widget.api.uploadAvatar(file);
+          if (mounted) {
+            setState(() {
+              _profile = _profile?.copyWith(avatarUrl: avatarUrl);
+              _isUploadingAvatar = false;
+            });
+          }
+        } else {
+          if (mounted) setState(() => _isUploadingAvatar = false);
         }
-      } else {
-        if (mounted) setState(() => _isUploadingAvatar = false);
+      } finally {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       }
     } else {
       if (mounted) setState(() => _isUploadingAvatar = false);
