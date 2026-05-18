@@ -68,6 +68,7 @@ class ApiService {
   bool _isIntentionalDisconnect = false;
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 5;
+  Timer? _reconnectTimer;
   StreamSubscription<dynamic>? _wsStreamSubscription;
 
   String? get token => _token;
@@ -695,9 +696,12 @@ class ApiService {
       _isConnecting = false;
 
       if (_isReconnecting) {
-        _isReconnecting = false;
-        _reconnectAttempts = 0;
         onReconnected?.call();
+        Future.delayed(const Duration(seconds: 5), () {
+          if (!_isReconnecting) return;
+          _isReconnecting = false;
+          _reconnectAttempts = 0;
+        });
       }
     } catch (e) {
       ApiService.addLog('WS Connect Error: $e');
@@ -714,9 +718,10 @@ class ApiService {
 
   void _handleDisconnect() {
     _isConnecting = false;
-    if (_isReconnecting) return;
     if (_isIntentionalDisconnect) {
       _isIntentionalDisconnect = false;
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
       return;
     }
 
@@ -731,21 +736,22 @@ class ApiService {
 
     onDisconnected?.call();
 
-    if (_reconnectAttempts <= _maxReconnectAttempts) {
-      onReconnecting?.call();
+    if (_reconnectAttempts > _maxReconnectAttempts) return;
 
-      // Exponential backoff: 1s, 2s, 4s, 8s, 16s
-      final delay = Duration(seconds: _reconnectAttempts);
-      print(
-        'WS: Reconnecting in ${delay.inSeconds}s (attempt $_reconnectAttempts/$_maxReconnectAttempts)',
-      );
+    onReconnecting?.call();
 
-      Future.delayed(delay, () {
-        if (_token != null && _isReconnecting) {
-          connectWebSocket();
-        }
-      });
-    }
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+    final delay = Duration(seconds: _reconnectAttempts);
+    print(
+      'WS: Reconnecting in ${delay.inSeconds}s (attempt $_reconnectAttempts/$_maxReconnectAttempts)',
+    );
+
+    _reconnectTimer = Timer(delay, () {
+      _reconnectTimer = null;
+      if (_token != null) {
+        connectWebSocket();
+      }
+    });
   }
 
   Future<void> sendMessageViaWs(String chatId, String text, {String? replyTo, String? tempId}) async {
@@ -1073,6 +1079,8 @@ class ApiService {
     _isReconnecting = false;
     _reconnectAttempts = 0;
     _isConnecting = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     _wsStreamSubscription?.cancel();
     _wsStreamSubscription = null;
     try { _wsChannel?.sink.close(); } catch (_) {}
