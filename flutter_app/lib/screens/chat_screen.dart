@@ -153,7 +153,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _recorderController = RecorderController()
         ..androidEncoder = AndroidEncoder.aac
         ..androidOutputFormat = AndroidOutputFormat.mpeg4
-        ..iosEncoder = IosEncoder.kAudioFormatMPEG4AAC;
+        ..iosEncoder = IosEncoder.kAudioFormatMPEG4AAC
+        ..bitRate = 128000
+        ..sampleRate = 44100;
 
       await _recorderController!.record(path: _recordingPath);
 
