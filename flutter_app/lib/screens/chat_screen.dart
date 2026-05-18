@@ -199,6 +199,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
           final uploadResult = await widget.api.uploadFile(file);
           if (uploadResult != null) {
+            ApiService.addLog('_stopRecording: uploadFile succeeded fileId=${uploadResult['fileId']} path=$path');
             widget.api.sendFile(
               widget.chatId,
               uploadResult['fileId']!,
@@ -250,8 +251,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       });
 
       if (message.userId == _currentUserId) {
+        final confirmedTempId = msg['tempId'] as String?;
+        ApiService.addLog('_handleMessage: confirmed msgId=${message.id} tempId=$confirmedTempId');
         _pendingMessageTimer?.cancel();
-        _pendingMessageIds.remove(msg['tempId'] as String? ?? '');
+        _pendingMessageIds.remove(confirmedTempId ?? '');
         _sendInProgress = false;
       }
 
@@ -454,7 +457,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
 
-    if (_sendInProgress) return;
+    if (_sendInProgress) {
+      ApiService.addLog('_sendMessage: blocked sendInProgress=true');
+      return;
+    }
 
     final text = _messageController.text.trim();
     if (text.isEmpty && _replyToMessageId == null) return;
@@ -481,8 +487,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       _sendInProgress = false;
       
-      if (_pendingMessageIds.remove(pendingId)) {
-        ApiService.addLog('_sendMessage: timeout chatId=${widget.chatId} pendingId=$pendingId textLen=${text.length}');
+      final wasPending = _pendingMessageIds.remove(pendingId);
+      ApiService.addLog('_sendMessage: timer fired chatId=${widget.chatId} pendingId=$pendingId wasPending=$wasPending');
+      if (wasPending) {
         _messageController.text = text;
         if (replyTo != null) {
           setState(() {

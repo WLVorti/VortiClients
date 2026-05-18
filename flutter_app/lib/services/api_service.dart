@@ -766,6 +766,7 @@ class ApiService {
             if (tempId != null) 'tempId': tempId,
           }),
         );
+        ApiService.addLog('sendMessageViaWs: sent tempId=$tempId chatId=$chatId');
         return;
       } catch (e) {
         ApiService.addLog('sendMessageViaWs: WS send error for chatId=$chatId tempId=$tempId: $e');
@@ -875,19 +876,26 @@ class ApiService {
   }
 
   Future<void> sendFileViaWs(String chatId, String fileId, {String? replyTo, String? mimeType}) async {
-    try {
-      _wsChannel?.sink.add(
-        jsonEncode({
-          'type': 'sendFile',
-          'chatId': chatId,
-          'fileId': fileId,
-          if (replyTo != null) 'replyTo': replyTo,
-          if (mimeType != null) 'fileMimeType': mimeType,
-        }),
-      );
-    } catch (e) {
-      await sendFileViaRest(chatId, fileId, replyTo: replyTo, mimeType: mimeType);
+    if (_wsChannel?.sink != null) {
+      try {
+        _wsChannel!.sink.add(
+          jsonEncode({
+            'type': 'sendFile',
+            'chatId': chatId,
+            'fileId': fileId,
+            if (replyTo != null) 'replyTo': replyTo,
+            if (mimeType != null) 'fileMimeType': mimeType,
+          }),
+        );
+        ApiService.addLog('sendFileViaWs: sent fileId=$fileId chatId=$chatId');
+        return;
+      } catch (e) {
+        ApiService.addLog('sendFileViaWs: WS send error for chatId=$chatId fileId=$fileId: $e');
+      }
+    } else {
+      ApiService.addLog('sendFileViaWs: WS null for chatId=$chatId fileId=$fileId, falling back to REST');
     }
+    await sendFileViaRest(chatId, fileId, replyTo: replyTo, mimeType: mimeType);
   }
 
   Future<void> sendFileViaRest(String chatId, String fileId, {String? replyTo, String? mimeType}) async {
@@ -903,9 +911,11 @@ class ApiService {
       );
       if (res.statusCode == 200) {
         // Don't call onMessage here - server will broadcast it back via WebSocket
+      } else {
+        ApiService.addLog('sendFileViaRest: HTTP ${res.statusCode} for chatId=$chatId fileId=$fileId: ${res.body}');
       }
     } catch (e) {
-      print('REST sendFile error: $e');
+      ApiService.addLog('sendFileViaRest: exception for chatId=$chatId fileId=$fileId: $e');
     }
   }
 
