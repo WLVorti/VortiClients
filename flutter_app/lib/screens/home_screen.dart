@@ -456,7 +456,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
                       ),
                     ),
                     trailing: Row(
@@ -678,7 +678,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
                           ),
                         ),
                         trailing: Row(

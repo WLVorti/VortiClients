@@ -344,7 +344,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
                       ),
                     ),
                     trailing: Row(
