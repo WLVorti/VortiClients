@@ -745,15 +745,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       return const SizedBox.shrink();
                     },
                   ),
-                  if (_isOtherTyping)
-                    Text(
-                      'печатает...',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -935,7 +926,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             ),
                             textInputAction: TextInputAction.newline,
                             onChanged: (value) {
-                              _saveDraft(value);
+                              _saveDraft();
                             },
                         ),
                       ),
