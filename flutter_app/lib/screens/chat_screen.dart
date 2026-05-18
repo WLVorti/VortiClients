@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
@@ -911,43 +912,32 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     Expanded(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxHeight: 120),
-                        child: TextField(
-                          controller: _messageController,
-                          maxLines: null,
-                          minLines: 1,
-                          textCapitalization: TextCapitalization.sentences,
-                          decoration: InputDecoration(
-                            hintText: _isEditing
-                                ? 'Edit message...'
-                                : 'Type a message...',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
+                          child: TextField(
+                            controller: _messageController,
+                            maxLines: null,
+                            minLines: 1,
+                            textCapitalization: TextCapitalization.sentences,
+                            inputFormatters: [
+                              LengthLimitingTextInputFormatter(_maxMessageLength),
+                            ],
+                            decoration: InputDecoration(
+                              hintText: _isEditing
+                                  ? 'Edit message...'
+                                  : 'Type a message...',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              isDense: true,
                             ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
-                            ),
-                            isDense: true,
-                          ),
-                          textInputAction: TextInputAction.newline,
-                          onChanged: (value) {
-                            if (value.length > 5000) {
-                              value = value.substring(0, 5000);
-                              _messageController.text = value;
-                              _messageController.selection =
-                                  TextSelection.fromPosition(
-                                    TextPosition(offset: value.length),
-                                  );
-                            }
-                            if (!_isEditing) {
-                              widget.api.sendTyping(
-                                widget.chatId,
-                                value.isNotEmpty,
-                              );
-                            }
-                            _saveDraft();
-                            setState(() {});
-                          },
+                            textInputAction: TextInputAction.newline,
+                            onChanged: (value) {
+                              _sendTyping();
+                              _saveDraft(value);
+                            },
                         ),
                       ),
                     ),
