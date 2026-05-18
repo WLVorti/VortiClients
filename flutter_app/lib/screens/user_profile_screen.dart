@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/models.dart';
+import '../utils/avatar_utils.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final ApiService api;
@@ -76,7 +77,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                           const SizedBox(height: 20),
                           CircleAvatar(
                             radius: 60,
-                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            backgroundColor: colorFromId(_profile!.id),
                             backgroundImage: (_profile!.avatarUrl != null &&
                                     _profile!.avatarUrl!.isNotEmpty)
                                 ? NetworkImage(

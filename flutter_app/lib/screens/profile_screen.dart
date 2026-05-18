@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import '../services/api_service.dart';
+import '../utils/avatar_utils.dart';
 import '../services/theme_provider.dart';
 import '../models/models.dart';
 import '../models/account.dart';
@@ -265,7 +266,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                       CircleAvatar(
                         radius: 50,
-                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        backgroundColor: colorFromId(widget.api.userId ?? ''),
                         backgroundImage: _profile?.avatarUrl != null
                             ? NetworkImage(_getAvatarUrl())
                             : null,
@@ -967,7 +968,7 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        backgroundColor: colorFromId(account.id),
                         backgroundImage: account.avatarUrl != null
                             ? NetworkImage('http://77.34.76.27:3000${account.avatarUrl}')
                             : null,

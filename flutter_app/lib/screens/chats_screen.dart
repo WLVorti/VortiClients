@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/mute_service.dart';
 import '../models/models.dart';
+import '../utils/avatar_utils.dart';
 import 'chat_screen.dart';
 import 'auth_screen.dart';
 import 'profile_screen.dart';
@@ -172,7 +173,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   itemBuilder: (_, i) => ListTile(
                     leading: Stack(
                       children: [
-                        _buildAvatar(users[i].avatarUrl, users[i].username[0]),
+                        _buildAvatar(users[i].avatarUrl, users[i].username[0], userId: users[i].id),
                         if (_onlineUsers.contains(users[i].id))
                           Positioned(
                             right: 0,
@@ -261,10 +262,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
     return lastMessage;
   }
 
-  Widget _buildAvatar(String? avatarUrl, String fallbackChar) {
-    print(
-      '[Avatar] _buildAvatar called with: avatarUrl=$avatarUrl, fallback=$fallbackChar',
-    );
+  Widget _buildAvatar(String? avatarUrl, String fallbackChar, {String? userId}) {
+    final fallbackColor = userId != null ? colorFromId(userId) : Theme.of(context).colorScheme.primary;
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       final fullUrl = 'http://77.34.76.27:3000$avatarUrl';
       print('[Avatar] Loading image: $fullUrl');
@@ -285,7 +284,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
             errorBuilder: (context, error, stackTrace) {
               print('[Avatar] Error loading $fullUrl: $error');
               return CircleAvatar(
-                backgroundColor: Theme.of(context).colorScheme.primary,
+                backgroundColor: fallbackColor,
                 child: Text(fallbackChar.toUpperCase()),
               );
             },
@@ -293,9 +292,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
         ),
       );
     }
-    print('[Avatar] Using fallback letter');
     return CircleAvatar(
-      backgroundColor: Theme.of(context).colorScheme.primary,
+      backgroundColor: fallbackColor,
       child: Text(fallbackChar.toUpperCase()),
     );
   }

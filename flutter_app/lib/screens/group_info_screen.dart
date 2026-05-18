@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import '../services/api_service.dart';
 import '../models/models.dart';
+import '../utils/avatar_utils.dart';
 
 class GroupInfoScreen extends StatefulWidget {
   final ApiService api;
@@ -195,7 +196,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
 
             return ListTile(
               leading: CircleAvatar(
-                backgroundColor: Theme.of(context).colorScheme.primary,
+                backgroundColor: colorFromId(userId),
                 child: Text(username[0].toUpperCase()),
               ),
               title: Text(username),
@@ -435,7 +436,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   itemCount: users.length,
                   itemBuilder: (_, i) => ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      backgroundColor: colorFromId(users[i].id),
                       child: Text(users[i].username[0]),
                     ),
                     title: Text(users[i].username),

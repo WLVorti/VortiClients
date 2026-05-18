@@ -3,6 +3,7 @@ import '../services/api_service.dart';
 import '../services/mute_service.dart';
 import '../services/theme_provider.dart';
 import '../models/models.dart';
+import '../utils/avatar_utils.dart';
 import 'chat_screen.dart';
 import 'auth_screen.dart';
 import 'profile_screen.dart';
@@ -160,8 +161,9 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
         onBackgroundImageError: (exception, stackTrace) {},
       );
     }
+    final fallbackColor = userId != null ? colorFromId(userId) : Theme.of(context).colorScheme.primary;
     return CircleAvatar(
-      backgroundColor: Theme.of(context).colorScheme.primary,
+      backgroundColor: fallbackColor,
       child: Text(fallbackChar.toUpperCase()),
     );
   }
@@ -301,6 +303,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                           _buildAvatar(
                             users[i].avatarUrl,
                             users[i].username[0],
+                            userId: users[i].id,
                           ),
                           if (_onlineUsers.contains(users[i].id))
                             Positioned(
@@ -617,7 +620,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     }
   }
 
-  Widget _buildAvatar(String? avatarUrl, String fallbackChar) {
+  Widget _buildAvatar(String? avatarUrl, String fallbackChar, {String? userId}) {
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       final fullUrl = 'http://77.34.76.27:3000$avatarUrl';
       return CircleAvatar(
@@ -625,8 +628,9 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
         onBackgroundImageError: (exception, stackTrace) {},
       );
     }
+    final fallbackColor = userId != null ? colorFromId(userId) : Theme.of(context).colorScheme.primary;
     return CircleAvatar(
-      backgroundColor: Theme.of(context).colorScheme.primary,
+      backgroundColor: fallbackColor,
       child: Text(fallbackChar.toUpperCase()),
     );
   }
@@ -822,7 +826,7 @@ builder: (ctx, setSheetState) => Padding(
                       final user = users[i];
                       final isSelected = selectedUsers.contains(user.id);
                       return ListTile(
-                        leading: _buildAvatar(user.avatarUrl, user.username[0]),
+                        leading: _buildAvatar(user.avatarUrl, user.username[0], userId: user.id),
                         title: Text(user.username),
                         trailing: isSelected
                             ? const Icon(Icons.check_circle, color: Colors.green)
