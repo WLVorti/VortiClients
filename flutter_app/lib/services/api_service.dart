@@ -422,7 +422,7 @@ class ApiService {
     return null;
   }
 
-  Future<List<MessageSearchResult>> searchMessages(String query, {int limit = 50, int? before}) async {
+  Future<Map<String, dynamic>> searchMessages(String query, {int limit = 50, int? before}) async {
     try {
       final uri = Uri.parse('$baseUrl/search/messages').replace(queryParameters: {
         'q': query,
@@ -432,12 +432,13 @@ class ApiService {
       final res = await _client.get(uri, headers: _headers);
       final data = jsonDecode(res.body);
       if (data['status'] == 'success') {
-        return (data['messages'] as List).map((m) => MessageSearchResult.fromJson(m)).toList();
+        final messages = (data['messages'] as List).map((m) => MessageSearchResult.fromJson(m)).toList();
+        return {'messages': messages, 'hasMore': data['hasMore'] == true};
       }
     } catch (e) {
       ApiService.addLog('searchMessages error: $e');
     }
-    return [];
+    return {'messages': <MessageSearchResult>[], 'hasMore': false};
   }
 
   Future<List<User>> searchUsers(String query) async {
