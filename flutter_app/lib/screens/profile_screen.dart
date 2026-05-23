@@ -9,6 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../utils/avatar_utils.dart';
 import '../services/theme_provider.dart';
+import '../widgets/falling_icons_background.dart';
 import '../models/models.dart';
 import '../models/account.dart';
 import 'home_screen.dart';
@@ -276,9 +277,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
+      body: Stack(fit: StackFit.expand, children: [
+        const Positioned.fill(child: FallingIconsBackground(maxConcurrent: 120)),
+        _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
               padding: const EdgeInsets.all(16),
               children: [
                 if (_isLoading)
@@ -525,6 +528,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
+        ],
+      ),
     );
   }
   

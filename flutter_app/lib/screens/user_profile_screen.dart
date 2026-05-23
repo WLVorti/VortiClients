@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
+import '../widgets/falling_icons_background.dart';
 import '../models/models.dart';
 import '../utils/avatar_utils.dart';
 
@@ -38,11 +39,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _profile == null
-              ? const Center(child: Text('User not found'))
-              : SingleChildScrollView(
+      body: Stack(fit: StackFit.expand, children: [
+        const Positioned.fill(child: FallingIconsBackground(maxConcurrent: 120)),
+        _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _profile == null
+                ? const Center(child: Text('User not found'))
+                : SingleChildScrollView(
                   child: Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
@@ -119,6 +122,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     ),
                   ),
                 ),
+        ],
+      ),
     );
   }
 
