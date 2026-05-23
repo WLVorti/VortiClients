@@ -42,6 +42,7 @@ class ApiService {
   VoidCallback? onReconnecting;
   VoidCallback? onReconnected;
   VoidCallback? onOnlineUsersChanged;
+  VoidCallback? onAuthExpired;
   final Set<String> _onlineUsers = {};
   
   void addMessageListener(Function(Map<String, dynamic>) listener) {
@@ -106,6 +107,64 @@ class ApiService {
 
   static const String _accountsKey = 'accounts_list';
   static const String _currentAccountKey = 'current_account_id';
+  static const String _lastActiveKey = 'last_active';
+
+  Future<bool> _tryRefreshToken() async {
+    if (_token == null) return false;
+    try {
+      final res = await _client.post(
+        Uri.parse('$baseUrl/auth/refresh'),
+        headers: _headers,
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        _token = data['token'];
+        _userId = data['userId'];
+        await _storage.write(key: 'token', value: _token);
+        await _storage.write(key: 'userId', value: _userId);
+        ApiService.addLog('Token refreshed successfully');
+        return true;
+      }
+      ApiService.addLog('Token refresh failed: ${res.statusCode} ${res.body}');
+    } catch (e) {
+      ApiService.addLog('Token refresh error: $e');
+    }
+    return false;
+  }
+
+  Future<http.Response> _requestWithRefresh(Future<http.Response> Function() request) async {
+    var res = await request();
+    if (res.statusCode == 401) {
+      final refreshed = await _tryRefreshToken();
+      if (refreshed) {
+        res = await request();
+        if (res.statusCode == 401) {
+          _handleAuthExpired();
+        }
+      } else {
+        _handleAuthExpired();
+      }
+    }
+    return res;
+  }
+
+  void _handleAuthExpired() {
+    clearCredentials();
+    onAuthExpired?.call();
+  }
+
+  Future<void> updateLastActive() async {
+    await _storage.write(key: _lastActiveKey, value: DateTime.now().millisecondsSinceEpoch.toString());
+  }
+
+  Future<bool> isSessionExpired() async {
+    final lastActive = await _storage.read(key: _lastActiveKey);
+    if (lastActive == null) return false;
+    final lastActiveMs = int.tryParse(lastActive);
+    if (lastActiveMs == null) return false;
+    final weekAgo = DateTime.now().subtract(const Duration(days: 7)).millisecondsSinceEpoch;
+    return lastActiveMs < weekAgo;
+  }
 
   Future<List<Account>> getAccounts() async {
     final accountsJson = await _storage.read(key: _accountsKey);
@@ -400,10 +459,10 @@ class ApiService {
 
   Future<Profile?> getProfile() async {
     try {
-      final res = await _client.get(
+      final res = await _requestWithRefresh(() => _client.get(
         Uri.parse('$baseUrl/profile'),
         headers: _headers,
-      );
+      ));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         print('Get profile response: ${res.body}'); // Debug log
@@ -452,11 +511,12 @@ class ApiService {
   }
 
   Future<List<Chat>> getChats() async {
-    final res = await _client.get(
+    final res = await _requestWithRefresh(() => _client.get(
       Uri.parse('$baseUrl/chats'),
       headers: _headers,
-    );
+    ));
 
+    if (res.statusCode != 200) return [];
     final data = jsonDecode(res.body);
     ApiService.addLog('[API] getChats: ${res.statusCode}');
       print('[API] getChats response: ${res.body}');
@@ -588,11 +648,25 @@ class ApiService {
     return data['chatId'];
   }
 
-  Future<List<Message>> getMessages(String chatId, {int limit = 50}) async {
-    final res = await _client.get(
-      Uri.parse('$baseUrl/chats/$chatId/messages?limit=$limit'),
-      headers: _headers,
-    );
+  Future<int> getMessageCount(String chatId) async {
+    try {
+      final res = await _requestWithRefresh(() => _client.get(
+        Uri.parse('$baseUrl/chats/$chatId/messages/count'),
+        headers: _headers,
+      ));
+      final data = jsonDecode(res.body);
+      return data['totalCount'] ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  Future<List<Message>> getMessages(String chatId, {int limit = 50, int? before}) async {
+    final uri = Uri.parse('$baseUrl/chats/$chatId/messages').replace(queryParameters: {
+      'limit': limit.toString(),
+      if (before != null) 'before': before.toString(),
+    });
+    final res = await _client.get(uri, headers: _headers);
 
     final data = jsonDecode(res.body);
     return (data['messages'] as List).map((m) => Message.fromJson(m)).toList();
@@ -713,6 +787,7 @@ class ApiService {
 
       _wsChannel!.sink.add(jsonEncode({'type': 'auth', 'token': _token}));
       _isConnecting = false;
+      updateLastActive();
 
       if (_isReconnecting) {
         onReconnected?.call();
@@ -997,14 +1072,14 @@ class ApiService {
 
   Future<Profile?> updateProfile({String? displayName, String? bio}) async {
     try {
-      final res = await _client.put(
+      final res = await _requestWithRefresh(() => _client.put(
         Uri.parse('$baseUrl/profile'),
         headers: _headers,
         body: jsonEncode({
           if (displayName != null) 'displayName': displayName,
           if (bio != null) 'bio': bio,
         }),
-      );
+      ));
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -1020,15 +1095,16 @@ class ApiService {
 
   Future<String?> uploadAvatar(File file) async {
     try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/profile/avatar'),
-      );
-      request.headers.addAll({'Authorization': 'Bearer $_token'});
-      request.files.add(await http.MultipartFile.fromPath('avatar', file.path));
-
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+      final response = await _requestWithRefresh(() async {
+        final request = http.MultipartRequest(
+          'POST',
+          Uri.parse('$baseUrl/profile/avatar'),
+        );
+        request.headers.addAll({'Authorization': 'Bearer $_token'});
+        request.files.add(await http.MultipartFile.fromPath('avatar', file.path));
+        final streamed = await request.send();
+        return http.Response.fromStream(streamed);
+      });
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
@@ -1042,10 +1118,10 @@ class ApiService {
 
   Future<bool> deleteAvatar() async {
     try {
-      final res = await _client.delete(
+      final res = await _requestWithRefresh(() => _client.delete(
         Uri.parse('$baseUrl/profile/avatar'),
         headers: _headers,
-      );
+      ));
       return res.statusCode == 200;
     } catch (e) {
       print('Delete avatar error: $e');
@@ -1055,15 +1131,16 @@ class ApiService {
 
   Future<String?> uploadGroupAvatar(String chatId, File file) async {
     try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/chats/$chatId/avatar'),
-      );
-      request.headers.addAll({'Authorization': 'Bearer $_token'});
-      request.files.add(await http.MultipartFile.fromPath('avatar', file.path));
-
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+      final response = await _requestWithRefresh(() async {
+        final request = http.MultipartRequest(
+          'POST',
+          Uri.parse('$baseUrl/chats/$chatId/avatar'),
+        );
+        request.headers.addAll({'Authorization': 'Bearer $_token'});
+        request.files.add(await http.MultipartFile.fromPath('avatar', file.path));
+        final streamed = await request.send();
+        return http.Response.fromStream(streamed);
+      });
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
@@ -1077,10 +1154,10 @@ class ApiService {
 
   Future<bool> deleteGroupAvatar(String chatId) async {
     try {
-      final res = await _client.delete(
+      final res = await _requestWithRefresh(() => _client.delete(
         Uri.parse('$baseUrl/chats/$chatId/avatar'),
         headers: _headers,
-      );
+      ));
       return res.statusCode == 200;
     } catch (e) {
       print('Delete group avatar error: $e');

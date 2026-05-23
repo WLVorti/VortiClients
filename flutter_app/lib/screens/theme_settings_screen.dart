@@ -85,7 +85,10 @@ class ThemeSettingsScreen extends StatelessWidget {
           Container(width: 40, height: 40, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade400))),
           const SizedBox(width: 12),
           Expanded(child: Text(label)),
-          IconButton(icon: const Icon(Icons.edit), onPressed: () => _showColorPicker(context, label.toLowerCase().replaceAll(' ', ''), color)),
+          IconButton(icon: const Icon(Icons.edit), onPressed: () {
+            final key = label == 'Text Secondary' ? 'textSecondary' : label.toLowerCase().replaceAll(' ', '');
+            _showColorPicker(context, key, color);
+          }),
         ],
       ),
     );

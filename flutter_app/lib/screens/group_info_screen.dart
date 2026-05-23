@@ -1,8 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:image_cropper/image_cropper.dart';
+import 'package:image_cropper_widget/image_cropper_widget.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../models/models.dart';
 import '../utils/avatar_utils.dart';
@@ -112,7 +114,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   radius: 40,
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   backgroundImage: _chatInfo?['avatarUrl'] != null
-                      ? NetworkImage('${ApiService.baseUrl}${_chatInfo!['avatarUrl']}?token=${widget.api.token}')
+                      ? CachedNetworkImageProvider('${ApiService.baseUrl}${_chatInfo!['avatarUrl']}?token=${widget.api.token}')
                       : null,
                   child: _chatInfo?['avatarUrl'] == null
                       ? Text(
@@ -208,19 +210,41 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                           await _removeParticipant(userId);
                         } else if (value == 'admin' || value == 'member') {
                           await _setRole(userId, value);
+                        } else if (value == 'transfer') {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Transfer ownership?'),
+                              content: Text('Make $username the new owner? You will become a regular member.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Transfer')),
+                              ],
+                            ),
+                          );
+                          if (confirm == true) {
+                            await widget.api.transferOwnership(widget.chatId, userId);
+                            if (mounted) Navigator.pop(context);
+                          }
                         }
                       },
                       itemBuilder: (_) => [
-                        if (role != 'admin')
+                        if (_currentUserRole == 'owner') ...[
+                          if (role != 'admin')
+                            const PopupMenuItem(
+                              value: 'admin',
+                              child: Text('Make admin'),
+                            ),
+                          if (role == 'admin')
+                            const PopupMenuItem(
+                              value: 'member',
+                              child: Text('Remove admin'),
+                            ),
                           const PopupMenuItem(
-                            value: 'admin',
-                            child: Text('Make admin'),
+                            value: 'transfer',
+                            child: Text('Transfer ownership'),
                           ),
-                        if (role == 'admin')
-                          const PopupMenuItem(
-                            value: 'member',
-                            child: Text('Remove admin'),
-                          ),
+                        ],
                         const PopupMenuItem(
                           value: 'remove',
                           child: Text('Remove'),
@@ -344,6 +368,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final file = await _pickImage();
     if (file != null) {
       final avatarUrl = await widget.api.uploadGroupAvatar(widget.chatId, file);
+      file.delete().catchError((_) {});
       if (avatarUrl != null && mounted) {
         _loadData();
       }
@@ -355,34 +380,47 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       type: FileType.image,
     );
     if (result != null && result.files.single.path != null) {
-      SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.manual,
-        overlays: SystemUiOverlay.values,
-      );
       try {
-        final croppedFile = await ImageCropper().cropImage(
-          sourcePath: result.files.single.path!,
-          aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-          compressQuality: 80,
-          maxWidth: 512,
-          maxHeight: 512,
-          uiSettings: [
-            AndroidUiSettings(
-              toolbarTitle: 'Crop Avatar',
-              toolbarColor: Theme.of(context).colorScheme.primary,
-              toolbarWidgetColor: Colors.white,
-              initAspectRatio: CropAspectRatioPreset.square,
-              lockAspectRatio: true,
-              statusBarColor: Theme.of(context).colorScheme.primary,
+        final controller = ImageCropperController();
+        final bytes = await Navigator.push<Uint8List>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => Scaffold(
+              appBar: AppBar(
+                leading: IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.rotate_right),
+                    onPressed: () => controller.rotateRight(),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      final b = await controller.crop();
+                      if (b != null) Navigator.pop(context, b);
+                    },
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+              body: ImageCropperWidget(
+                controller: controller,
+                image: FileImage(File(result.files.single.path!)),
+                aspectRatio: CropperRatio.ratio1_1,
+                style: CropperStyle(showGrid: true),
+              ),
             ),
-            IOSUiSettings(title: 'Crop Avatar', aspectRatioLockEnabled: true),
-          ],
+          ),
         );
-
-        if (croppedFile == null) return null;
-        return File(croppedFile.path);
-      } finally {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        if (bytes == null) return null;
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png');
+        await file.writeAsBytes(bytes);
+        return file;
+      } catch (_) {
+        return null;
       }
     }
     return null;

@@ -1,8 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:image_cropper/image_cropper.dart';
+import 'package:image_cropper_widget/image_cropper_widget.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../utils/avatar_utils.dart';
 import '../services/theme_provider.dart';
@@ -152,7 +155,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (mounted) {
       setState(() {
-        _profile = updatedProfile;
+        if (updatedProfile != null) {
+          _profile = updatedProfile;
+        }
         _isSaving = false;
       });
     }
@@ -162,38 +167,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isUploadingAvatar = true);
     final result = await FilePicker.platform.pickFiles(type: FileType.image);
     if (result != null && result.files.single.path != null) {
-      SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.manual,
-        overlays: SystemUiOverlay.values,
-      );
       try {
-        final croppedFile = await ImageCropper().cropImage(
-          sourcePath: result.files.single.path!,
-          uiSettings: [
-            AndroidUiSettings(
-              toolbarTitle: 'Crop avatar',
-              toolbarColor: _themeProvider.primaryColor,
-              toolbarWidgetColor: Colors.white,
-              initAspectRatio: CropAspectRatioPreset.square,
-              lockAspectRatio: false,
-              statusBarColor: _themeProvider.primaryColor,
+        final controller = ImageCropperController();
+        final file = await Navigator.push<Uint8List>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => Scaffold(
+              appBar: AppBar(
+                leading: IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.rotate_right),
+                    onPressed: () => controller.rotateRight(),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      final bytes = await controller.crop();
+                      if (bytes != null) Navigator.pop(context, bytes);
+                    },
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+              body: ImageCropperWidget(
+                controller: controller,
+                image: FileImage(File(result.files.single.path!)),
+                aspectRatio: CropperRatio.ratio1_1,
+                style: CropperStyle(showGrid: true),
+              ),
             ),
-          ],
+          ),
         );
-        if (croppedFile != null) {
-          final file = File(croppedFile.path);
-          final avatarUrl = await widget.api.uploadAvatar(file);
+        if (file != null) {
+          final dir = await getTemporaryDirectory();
+          final out = File('${dir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png');
+          await out.writeAsBytes(file);
+          final avatarUrl = await widget.api.uploadAvatar(out);
+          out.delete().catchError((_) {});
           if (mounted) {
             setState(() {
               _profile = _profile?.copyWith(avatarUrl: avatarUrl);
-              _isUploadingAvatar = false;
             });
           }
-        } else {
-          if (mounted) setState(() => _isUploadingAvatar = false);
         }
+      } catch (e) {
+        // ignore
       } finally {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        if (mounted) setState(() => _isUploadingAvatar = false);
       }
     } else {
       if (mounted) setState(() => _isUploadingAvatar = false);
@@ -249,7 +272,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   )
                 : const Icon(Icons.check),
-            onPressed: _isSaving ? null : _saveProfile,
+            onPressed: (_isSaving || _isUploadingAvatar) ? null : _saveProfile,
           ),
         ],
       ),
@@ -268,7 +291,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         radius: 50,
                         backgroundColor: colorFromId(widget.api.userId ?? ''),
                         backgroundImage: _profile?.avatarUrl != null
-                            ? NetworkImage(_getAvatarUrl())
+                            ? CachedNetworkImageProvider(_getAvatarUrl())
                             : null,
                       child: _profile?.avatarUrl == null
                           ? Text(
@@ -369,45 +392,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   },
                 ),
                 const SizedBox(height: 24),
-                Builder(
-                  builder: (context) {
-                    final theme = Theme.of(context);
-                    return ListTile(
-                      tileColor: theme.colorScheme.surface,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      leading: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      title: Text('Theme',
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium),
-                      subtitle: Text(
-                          _themeProvider.themeId == 'custom'
-                              ? 'Custom'
-                              : _themeProvider.themeId,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium),
-                      trailing: Icon(Icons.chevron_right,
-                          color: theme.colorScheme.onSurfaceVariant),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ThemeSettingsScreen(
-                              themeProvider: _themeProvider,
-                            ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      child: const Icon(Icons.palette, color: Colors.white, size: 20),
+                    ),
+                    title: const Text('Theme'),
+                    subtitle: Text(
+                      _themeProvider.themeId == 'custom'
+                          ? 'Custom'
+                          : _themeProvider.themeId,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ThemeSettingsScreen(
+                            themeProvider: _themeProvider,
                           ),
-                        );
-                      },
-                    );
-                  },
+                        ),
+                      );
+                    },
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Builder(
@@ -970,7 +983,7 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
                       leading: CircleAvatar(
                         backgroundColor: colorFromId(account.id),
                         backgroundImage: account.avatarUrl != null
-                            ? NetworkImage('http://77.34.76.27:3000${account.avatarUrl}')
+                            ? CachedNetworkImageProvider('http://77.34.76.27:3000${account.avatarUrl}')
                             : null,
                         child: account.avatarUrl == null
                             ? Text(_getAccountInitial(account))

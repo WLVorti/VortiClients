@@ -226,6 +226,25 @@ class Message {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'chat_id': chatId,
+      'user_id': userId,
+      'text': text,
+      'reply_to': replyTo,
+      'reply_text': replyText,
+      'reply_username': replyUsername,
+      'file_id': fileId,
+      'file_mime_type': fileMimeType,
+      'created_at': createdAt,
+      'is_deleted': isDeleted,
+      'is_edited': isEdited,
+      'edited_text': editedText,
+      'status': status.name,
+    };
+  }
+
   Message copyWith({
     String? text,
     bool? isDeleted,

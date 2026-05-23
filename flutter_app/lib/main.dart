@@ -6,6 +6,7 @@ import 'services/api_service.dart';
 import 'services/theme_provider.dart';
 import 'services/notification_service.dart';
 import 'services/mute_service.dart';
+import 'services/message_cache.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
@@ -22,6 +23,8 @@ void main() async {
   await Firebase.initializeApp();
   ApiService.addLog('Firebase.initializeApp() done');
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  await MessageCache.init();
 
   runApp(const VortiApp());
 }
@@ -50,6 +53,17 @@ class _VortiAppState extends State<VortiApp> {
       ApiService.addLog('_checkAuth: loading credentials...');
       await _api.loadCredentials().timeout(const Duration(seconds: 10));
       ApiService.addLog('_checkAuth: credentials loaded');
+
+      // Check if session expired due to inactivity (> 7 days)
+      if (_api.token != null) {
+        final expired = await _api.isSessionExpired();
+        if (expired) {
+          ApiService.addLog('_checkAuth: session expired by inactivity, clearing credentials');
+          _api.clearCredentials();
+        }
+      }
+
+      ApiService.addLog('_checkAuth: saved token=${_api.token != null}');
       ThemeProvider().setCurrentUser(_api.userId);
       ApiService.addLog('_checkAuth: loading theme...');
       await ThemeProvider().loadTheme();
@@ -63,6 +77,14 @@ class _VortiAppState extends State<VortiApp> {
       ApiService.addLog('_checkAuth: notifications done');
     } catch (e) {
       ApiService.addLog('_checkAuth error: $e');
+    }
+
+    _api.onAuthExpired = () {
+      if (mounted) setState(() {});
+    };
+
+    if (_api.token != null) {
+      _api.updateLastActive();
     }
 
     if (mounted) {

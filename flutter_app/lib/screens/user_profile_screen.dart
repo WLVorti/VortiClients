@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../models/models.dart';
 import '../utils/avatar_utils.dart';
@@ -16,14 +17,11 @@ class UserProfileScreen extends StatefulWidget {
 class _UserProfileScreenState extends State<UserProfileScreen> {
   Profile? _profile;
   bool _isLoading = true;
-  int _messageCount = 0;
-  bool _isLoadingMessages = false;
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
-    _loadMessageCount();
   }
 
   Future<void> _loadProfile() async {
@@ -33,29 +31,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         _profile = profile;
         _isLoading = false;
       });
-    }
-  }
-
-  Future<void> _loadMessageCount() async {
-    setState(() => _isLoadingMessages = true);
-    try {
-      final chats = await widget.api.getChats();
-      final chat = chats.firstWhere(
-        (c) => c.participants.contains(widget.userId) && c.type == 'direct',
-        orElse: () => chats.first,
-      );
-      if (chat.id.isNotEmpty) {
-        final messages = await widget.api.getMessages(chat.id);
-        if (mounted) {
-          setState(() {
-            _messageCount = messages.length;
-            _isLoadingMessages = false;
-          });
-        }
-      }
-    } catch (e) {
-      print('Load message count error: $e');
-      if (mounted) setState(() => _isLoadingMessages = false);
     }
   }
 
@@ -80,7 +55,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             backgroundColor: colorFromId(_profile!.id),
                             backgroundImage: (_profile!.avatarUrl != null &&
                                     _profile!.avatarUrl!.isNotEmpty)
-                                ? NetworkImage(
+                                ? CachedNetworkImageProvider(
                                     'http://77.34.76.27:3000${_profile!.avatarUrl}',
                                   )
                                 : null,
@@ -139,24 +114,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
-                          const SizedBox(height: 16),
-                          if (_isLoadingMessages)
-                            const CircularProgressIndicator()
-                          else
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                'Messages: $_messageCount',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Theme.of(context).colorScheme.onSurface,
-                                ),
-                              ),
-                            ),
                         ],
                       ),
                     ),

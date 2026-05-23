@@ -4,16 +4,21 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../utils/avatar_utils.dart';
 import '../services/api_service.dart';
 import '../services/mute_service.dart';
+import '../services/message_cache.dart';
 import '../models/models.dart';
 import 'user_profile_screen.dart';
+import 'group_info_screen.dart';
 import 'call_screen.dart';
 import 'image_viewer_screen.dart';
 
@@ -26,6 +31,7 @@ class ChatScreen extends StatefulWidget {
   final String? avatarUrl;
   final String? otherUserId;
   final String chatType;
+  final bool initialOnline;
   final VoidCallback? onMessagesRead;
 
   const ChatScreen({
@@ -36,6 +42,7 @@ class ChatScreen extends StatefulWidget {
     this.avatarUrl,
     this.otherUserId,
     this.chatType = 'direct',
+    this.initialOnline = false,
     this.onMessagesRead,
   });
 
@@ -50,6 +57,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   List<Message> _messages = [];
   bool _isLoading = true;
   bool _messagesLoaded = false;
+  bool _hasOlderMessages = false;
+  bool _isLoadingMore = false;
   bool _isUploading = false;
   bool _isEditing = false;
   bool _isOtherTyping = false;
@@ -61,8 +70,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final Set<String> _readMessages = {};
   final Set<String> _onlineUsers = {};
   final Set<String> _pendingMessageIds = {};
-  Timer? _pendingMessageTimer;
-  bool _sendInProgress = false;
+  final Map<String, Timer> _pendingMessageTimers = {};
+  Timer? _draftDebounce;
+  Timer? _readDebounce;
+  final Set<String> _pendingReadIds = {};
+  bool _isAppActive = true;
   bool _isRecording = false;
   DateTime? _recordingStartTime;
   RecorderController? _recorderController;
@@ -77,13 +89,64 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _currentUserId = widget.api.userId ?? '';
+    _loadCachedMessages();
     _loadMessages();
     _loadDraft();
     _loadMuteStatus();
     widget.api.addMessageListener(_handleMessage);
+    _scrollController.addListener(_onScroll);
     if (widget.chatType == 'group') {
       _loadParticipantNames();
     }
+  }
+
+  Future<void> _loadCachedMessages() async {
+    try {
+      final cached = await MessageCache.getMessages(widget.chatId);
+      if (cached.isEmpty || !mounted) return;
+      setState(() {
+        for (final m in cached.reversed) {
+          if (!_messages.any((e) => e.id == m.id)) {
+            _messages.add(m);
+          }
+        }
+        if (!_messagesLoaded) {
+          _isLoading = false;
+        }
+      });
+    } catch (_) {}
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_isLoadingMore || !_hasOlderMessages) return;
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreMessages();
+    }
+    if (_isNearBottom && _pendingReadIds.isNotEmpty) {
+      _flushReadReceipts();
+    }
+  }
+
+  void _scheduleReadReceipts() {
+    _readDebounce?.cancel();
+    _readDebounce = Timer(const Duration(seconds: 1), () {
+      if (!_isAppActive || !_scrollController.hasClients) return;
+      if (_isNearBottom) {
+        _flushReadReceipts();
+      }
+    });
+  }
+
+  void _flushReadReceipts() {
+    if (_pendingReadIds.isEmpty) return;
+    if (!_isNearBottom) return;
+    for (final id in _pendingReadIds) {
+      widget.api.sendRead(id);
+      _readMessages.add(id);
+    }
+    _pendingReadIds.clear();
+    widget.onMessagesRead?.call();
   }
 
   Future<void> _loadMuteStatus() async {
@@ -100,10 +163,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed) {
+      _isAppActive = true;
       widget.api.reconnectWebSocket();
+      _refreshMessageStatus();
     }
     
     if (state == AppLifecycleState.paused) {
+      _isAppActive = false;
+      _readDebounce?.cancel();
+      _pendingReadIds.clear();
       widget.api.sendPing();
     }
   }
@@ -113,7 +181,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     super.didChangeDependencies();
     if (widget.otherUserId != null) {
       setState(() {
-        _isOtherOnline = widget.api.isUserOnline(widget.otherUserId!);
+        _isOtherOnline = widget.api.isUserOnline(widget.otherUserId!) || widget.initialOnline;
       });
     }
   }
@@ -226,6 +294,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final type = msg['type'];
 
     if (type == 'message' && msg['chatId'] == widget.chatId) {
+      // Cancel pending timer FIRST, before any state mutation,
+      // to ensure the 5s "Failed to send" error never fires for a delivered message
+      if (msg['userId'] == _currentUserId) {
+        final confirmedTempId = msg['tempId'] as String?;
+        ApiService.addLog('_handleMessage: confirmed msgId=${msg['id']} tempId=$confirmedTempId');
+        if (confirmedTempId != null) {
+          _pendingMessageTimers[confirmedTempId]?.cancel();
+          _pendingMessageTimers.remove(confirmedTempId);
+          _pendingMessageIds.remove(confirmedTempId);
+        }
+      }
+
       final replyData = msg['reply'] as Map<String, dynamic>?;
 
       final message = Message.fromJson({
@@ -243,19 +323,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
 
       if (message.userId != _currentUserId) {
-        widget.api.sendRead(message.id);
+        _pendingReadIds.add(message.id);
+        _scheduleReadReceipts();
       }
 
-      setState(() {
-        _messages.add(message);
-      });
+      MessageCache.saveMessage(message);
 
-      if (message.userId == _currentUserId) {
-        final confirmedTempId = msg['tempId'] as String?;
-        ApiService.addLog('_handleMessage: confirmed msgId=${message.id} tempId=$confirmedTempId');
-        _pendingMessageTimer?.cancel();
-        _pendingMessageIds.remove(confirmedTempId ?? '');
-        _sendInProgress = false;
+      if (mounted) {
+        setState(() {
+          _messages.add(message);
+        });
       }
 
       _scrollToBottom(force: message.userId == _currentUserId);
@@ -272,9 +349,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final failedReplyTo = msg['replyTo'] as String?;
       
       if (failedMsgId != null) {
+        _pendingMessageTimers[failedMsgId]?.cancel();
+        _pendingMessageTimers.remove(failedMsgId);
         _pendingMessageIds.remove(failedMsgId);
       }
-      _sendInProgress = false;
       
       if (failedText != null && mounted) {
         _messageController.text = failedText;
@@ -314,7 +392,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     if (type == 'message_deleted' && msg['chatId'] == widget.chatId) {
       setState(() {
-        _messages.removeWhere((m) => m.id == msg['messageId']);
+        final index = _messages.indexWhere((m) => m.id == msg['messageId']);
+        if (index != -1) {
+          _messages[index] = _messages[index].copyWith(text: '[deleted]');
+          MessageCache.saveMessage(_messages[index]);
+        }
       });
     }
 
@@ -329,6 +411,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     }
 
+    if (type == 'online_users' && widget.otherUserId != null) {
+      setState(() {
+        _isOtherOnline = widget.api.isUserOnline(widget.otherUserId!);
+      });
+    }
+
     if (type == 'delivered') {
       final messageId = msg['messageId'];
       final index = _messages.indexWhere(
@@ -340,6 +428,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             status: MessageStatus.delivered,
           );
         });
+        MessageCache.saveMessage(_messages[index]);
       }
     }
 
@@ -354,6 +443,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             status: MessageStatus.read,
           );
         });
+        MessageCache.saveMessage(_messages[index]);
       }
       setState(() {
         _readMessages.add(messageId);
@@ -381,37 +471,88 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (_messagesLoaded) return;
     try {
       final messages = await widget.api.getMessages(widget.chatId);
-      if (mounted && widget.chatId == widget.chatId) {
-        final filtered = messages.where((m) => !m.isDeleted).toList();
-        final newMessages = filtered.where((m) => !_messages.any((existing) => existing.id == m.id)).toList();
-        
+      if (mounted) {
         setState(() {
-          _messages.addAll(newMessages);
+          for (final m in messages) {
+            final index = _messages.indexWhere((existing) => existing.id == m.id);
+            if (index != -1) {
+              if (m.status.index > _messages[index].status.index) {
+                _messages[index] = _messages[index].copyWith(status: m.status);
+              }
+            } else {
+              _messages.add(m);
+            }
+          }
           _isLoading = false;
           _messagesLoaded = true;
+          _hasOlderMessages = messages.length >= 50;
+
+          for (final m in messages) {
+            if (m.userId != _currentUserId && !_readMessages.contains(m.id)) {
+              _pendingReadIds.add(m.id);
+            }
+          }
+          final hasUnread = _pendingReadIds.isNotEmpty;
+          if (hasUnread) {
+            widget.onMessagesRead?.call();
+          }
         });
 
-        int markedCount = 0;
-        for (final msg in messages.reversed) {
-          if (msg.userId != _currentUserId && !_readMessages.contains(msg.id)) {
-            widget.api.sendRead(msg.id);
-            _readMessages.add(msg.id);
-            markedCount++;
-          }
-        }
-
-        if (markedCount > 0) {
-          widget.onMessagesRead?.call();
-        }
+        MessageCache.saveMessages(widget.chatId, messages);
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollToBottom(force: true);
+          if (_pendingReadIds.isNotEmpty) {
+            _scheduleReadReceipts();
+          }
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _refreshMessageStatus() async {
+    try {
+      final messages = await widget.api.getMessages(widget.chatId, limit: 50);
+      if (!mounted) return;
+      setState(() {
+        for (final m in messages) {
+          final index = _messages.indexWhere((existing) => existing.id == m.id);
+          if (index != -1 && m.status.index > _messages[index].status.index) {
+            _messages[index] = _messages[index].copyWith(status: m.status);
+            MessageCache.saveMessage(_messages[index]);
+          }
+        }
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadMoreMessages() async {
+    if (_isLoadingMore || !_hasOlderMessages) return;
+    _isLoadingMore = true;
+    final oldest = _messages.isEmpty ? null : _messages.first.createdAt;
+    try {
+      final messages = await widget.api.getMessages(widget.chatId, before: oldest, limit: 50);
+      if (mounted) {
+        setState(() {
+          _hasOlderMessages = messages.length >= 50;
+          final toInsert = <Message>[];
+          for (final m in messages) {
+            if (!_messages.any((existing) => existing.id == m.id)) {
+              toInsert.add(m);
+            }
+          }
+          if (toInsert.isNotEmpty) {
+            _messages.insertAll(0, toInsert);
+          }
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingMore = false);
     }
   }
 
@@ -457,11 +598,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
 
-    if (_sendInProgress) {
-      ApiService.addLog('_sendMessage: blocked sendInProgress=true');
-      return;
-    }
-
     final text = _messageController.text.trim();
     if (text.isEmpty && _replyToMessageId == null) return;
 
@@ -474,18 +610,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final pendingId = DateTime.now().millisecondsSinceEpoch.toString();
 
     _pendingMessageIds.add(pendingId);
-    _sendInProgress = true;
 
     widget.api.sendMessage(widget.chatId, text, replyTo: replyTo, tempId: pendingId);
 
+    _draftDebounce?.cancel();
     _messageController.clear();
     _cancelReply();
     _clearDraft();
 
-    _pendingMessageTimer?.cancel();
-    _pendingMessageTimer = Timer(const Duration(seconds: 5), () {
+    _pendingMessageTimers[pendingId]?.cancel();
+    _pendingMessageTimers[pendingId] = Timer(const Duration(seconds: 5), () {
       if (!mounted) return;
-      _sendInProgress = false;
+      _pendingMessageTimers.remove(pendingId);
       
       final wasPending = _pendingMessageIds.remove(pendingId);
       ApiService.addLog('_sendMessage: timer fired chatId=${widget.chatId} pendingId=$pendingId wasPending=$wasPending');
@@ -591,48 +727,137 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final success = await widget.api.deleteMessage(msg.id);
       if (success) {
         setState(() {
-          _messages.removeWhere((m) => m.id == msg.id);
+          final index = _messages.indexWhere((m) => m.id == msg.id);
+          if (index != -1) {
+            _messages[index] = _messages[index].copyWith(text: '[deleted]');
+            MessageCache.saveMessage(_messages[index]);
+          }
         });
       }
     }
   }
 
-  Future<void> _pickAndUploadFile() async {
+  void _showAttachmentOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Gallery'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickFromGallery();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Camera'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickFromCamera();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_file),
+              title: const Text('File'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickFile();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickFromGallery() async {
+    try {
+      if (await _requestGalleryPermission() == false) return;
+      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+      if (picked != null) {
+        await _uploadFile(File(picked.path));
+      }
+    } catch (e) {
+      _showSnackBar('Error picking from gallery');
+    }
+  }
+
+  Future<void> _pickFromCamera() async {
+    try {
+      final status = await Permission.camera.request();
+      if (status.isDenied || status.isPermanentlyDenied) {
+        _showSnackBar('Camera permission is required');
+        return;
+      }
+      final picked = await ImagePicker().pickImage(source: ImageSource.camera);
+      if (picked != null) {
+        await _uploadFile(File(picked.path));
+      }
+    } catch (e) {
+      _showSnackBar('Error taking photo');
+    }
+  }
+
+  Future<bool> _requestGalleryPermission() async {
+    try {
+      if (await Permission.storage.isGranted) return true;
+      final status = await Permission.storage.request();
+      if (status.isGranted) return true;
+      if (status.isPermanentlyDenied) {
+        _showSnackBar('Storage permission is required to access gallery');
+        return false;
+      }
+    } catch (_) {
+      // On Android 13+ Permission.storage may not be available;
+      // image_picker uses the system photo picker which needs no permission.
+    }
+    return true;
+  }
+
+  Future<void> _pickFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
         allowMultiple: false,
       );
-
       if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
-        final fileName = result.files.single.name;
-        final fileSize = result.files.single.size;
-
-        if (fileSize > 10 * 1024 * 1024) {
-          _showSnackBar('File too large (max 10MB)');
-          return;
-        }
-
-        setState(() => _isUploading = true);
-
-        final uploadResult = await widget.api.uploadFile(file);
-
-        if (uploadResult != null) {
-          widget.api.sendFile(
-            widget.chatId,
-            uploadResult['fileId']!,
-            mimeType: uploadResult['mimeType'],
-          );
-        } else {
-          _showSnackBar('Upload failed');
-        }
-
-        setState(() => _isUploading = false);
+        await _uploadFile(File(result.files.single.path!));
       }
     } catch (e) {
-      setState(() => _isUploading = false);
       _showSnackBar('Error selecting file');
+    }
+  }
+
+  Future<void> _uploadFile(File file) async {
+    try {
+      final fileSize = await file.length();
+      if (fileSize > 10 * 1024 * 1024) {
+        _showSnackBar('File too large (max 10MB)');
+        return;
+      }
+
+      setState(() => _isUploading = true);
+
+      final uploadResult = await widget.api.uploadFile(file);
+
+      if (uploadResult != null) {
+        widget.api.sendFile(
+          widget.chatId,
+          uploadResult['fileId']!,
+          mimeType: uploadResult['mimeType'],
+        );
+      } else {
+        _showSnackBar('Upload failed');
+      }
+
+      setState(() => _isUploading = false);
+    } catch (e) {
+      setState(() => _isUploading = false);
+      _showSnackBar('Upload failed');
     }
   }
 
@@ -644,8 +869,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    _pendingMessageTimer?.cancel();
-    _pendingMessageTimer = null;
+    for (final timer in _pendingMessageTimers.values) {
+      timer.cancel();
+    }
+    _pendingMessageTimers.clear();
+    _draftDebounce?.cancel();
+    _draftDebounce = null;
+    _readDebounce?.cancel();
+    _readDebounce = null;
+    widget.api.clearDraft(widget.chatId);
     WidgetsBinding.instance.removeObserver(this);
     _messageController.dispose();
     _editController.dispose();
@@ -661,34 +893,44 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         title: Row(
           children: [
             GestureDetector(
-              onTap: widget.otherUserId != null
-                  ? () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => UserProfileScreen(
-                            api: widget.api,
-                            userId: widget.otherUserId!,
-                          ),
-                        ),
-                      );
-                    }
-                  : null,
+              onTap: () {
+                if (widget.otherUserId != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => UserProfileScreen(
+                        api: widget.api,
+                        userId: widget.otherUserId!,
+                      ),
+                    ),
+                  );
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => GroupInfoScreen(
+                        api: widget.api,
+                        chatId: widget.chatId,
+                      ),
+                    ),
+                  );
+                }
+              },
               child: Stack(
                 children: [
                   CircleAvatar(
                     radius: 16,
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    backgroundImage:
-                        (widget.avatarUrl != null &&
-                            widget.avatarUrl!.isNotEmpty)
-                        ? NetworkImage(
-                            'http://77.34.76.27:3000${widget.avatarUrl}',
-                          )
+                    backgroundColor: colorFromId(widget.chatId),
+                    child: Text(widget.chatName[0].toUpperCase()),
+                  ),
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Colors.transparent,
+                    backgroundImage: widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
+                        ? CachedNetworkImageProvider('http://77.34.76.27:3000${widget.avatarUrl}')
                         : null,
-                    child:
-                        (widget.avatarUrl == null || widget.avatarUrl!.isEmpty)
-                        ? Text(widget.chatName[0].toUpperCase())
+                    onBackgroundImageError: widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
+                        ? (_, __) {}
                         : null,
                   ),
                   if (widget.otherUserId != null)
@@ -768,6 +1010,32 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             onPressed: () async {
               await MuteService.toggle(widget.chatId);
               await _loadMuteStatus();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            onPressed: () {
+              if (widget.otherUserId != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => UserProfileScreen(
+                      api: widget.api,
+                      userId: widget.otherUserId!,
+                    ),
+                  ),
+                );
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GroupInfoScreen(
+                      api: widget.api,
+                      chatId: widget.chatId,
+                    ),
+                  ),
+                );
+              }
             },
           ),
           IconButton(
@@ -863,7 +1131,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             reverse: true,
                             padding: const EdgeInsets.all(8),
                             itemCount: _messages.length,
-                            itemBuilder: (_, i) => _buildMessage(_messages[_messages.length - 1 - i]),
+                            itemBuilder: (_, i) {
+                              final msg = _messages[_messages.length - 1 - i];
+                              return KeyedSubtree(key: ValueKey(msg.id), child: _buildMessage(msg));
+                            },
                           )),
             ),
             if (_isEditing)
@@ -902,16 +1173,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    IconButton(
-                      onPressed: _isUploading ? null : _pickAndUploadFile,
-                      icon: _isUploading
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.attach_file),
-                    ),
+          IconButton(
+            onPressed: _isUploading ? null : _showAttachmentOptions,
+            icon: _isUploading
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.attach_file),
+          ),
                     Expanded(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxHeight: 120),
@@ -938,7 +1209,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             ),
                             textInputAction: TextInputAction.newline,
                             onChanged: (value) {
-                              _saveDraft();
+                              _draftDebounce?.cancel();
+                              _draftDebounce = Timer(const Duration(milliseconds: 300), _saveDraft);
                             },
                         ),
                       ),
@@ -1009,8 +1281,45 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildMessage(Message msg) {
-    if (msg.isDeleted) {
-      return const SizedBox.shrink();
+    if (msg.isDeleted || msg.text == '[deleted]') {
+      final isMe = msg.userId == _currentUserId;
+      final bubbleColor = isMe
+          ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5)
+          : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
+      final textColor = Theme.of(context).colorScheme.onSurfaceVariant;
+      return Padding(
+        padding: EdgeInsets.only(
+          left: isMe ? 64 : 12,
+          right: isMe ? 12 : 64,
+          top: 2,
+          bottom: 2,
+        ),
+        child: Align(
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: bubbleColor,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.delete_outline, size: 16, color: textColor),
+                const SizedBox(width: 6),
+                Text(
+                  'Message deleted',
+                  style: TextStyle(
+                    color: textColor,
+                    fontStyle: FontStyle.italic,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     final isMe = msg.userId == _currentUserId;
@@ -1054,10 +1363,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 Flexible(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      'http://77.34.76.27:3000/download/${msg.fileId}?token=${widget.api.token}',
+                    child: CachedNetworkImage(
+                      imageUrl: 'http://77.34.76.27:3000/download/${msg.fileId}?token=${widget.api.token}',
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Container(
+                      errorWidget: (_, __, ___) => Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: isMe

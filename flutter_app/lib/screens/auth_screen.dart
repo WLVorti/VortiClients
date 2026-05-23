@@ -178,7 +178,8 @@ class _AuthScreenState extends State<AuthScreen> {
         if (msg == 'Invalid username or password') {
           _error = 'Пользователь не найден.\nЕсли у вас нет аккаунта — сначала зарегистрируйтесь.';
         } else if (msg.startsWith('Invalid username or password')) {
-          final attempts = msg.split(' ').last;
+          final match = RegExp(r'\d+').firstMatch(msg);
+          final attempts = match?.group(0) ?? '?';
           _error = 'Неверный пароль. Осталось попыток: $attempts';
         } else if (msg.startsWith('Account locked')) {
           final match = RegExp(r'(\d+)').firstMatch(msg);

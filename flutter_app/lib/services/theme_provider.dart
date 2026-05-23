@@ -206,12 +206,12 @@ class ThemeProvider extends ChangeNotifier {
     final textSecondary = await _storage.read(key: textSecondaryKey);
     
     _customColors = ThemeColors(
-      primary: primary != null ? Color(int.parse(primary)) : ThemeColors.defaultLight.primary,
-      secondary: secondary != null ? Color(int.parse(secondary)) : ThemeColors.defaultLight.secondary,
-      background: background != null ? Color(int.parse(background)) : ThemeColors.defaultLight.background,
-      surface: surface != null ? Color(int.parse(surface)) : ThemeColors.defaultLight.surface,
-      text: text != null ? Color(int.parse(text)) : ThemeColors.defaultLight.text,
-      textSecondary: textSecondary != null ? Color(int.parse(textSecondary)) : ThemeColors.defaultLight.textSecondary,
+      primary: primary != null ? Color(int.parse(primary)) : _customColors.primary,
+      secondary: secondary != null ? Color(int.parse(secondary)) : _customColors.secondary,
+      background: background != null ? Color(int.parse(background)) : _customColors.background,
+      surface: surface != null ? Color(int.parse(surface)) : _customColors.surface,
+      text: text != null ? Color(int.parse(text)) : _customColors.text,
+      textSecondary: textSecondary != null ? Color(int.parse(textSecondary)) : _customColors.textSecondary,
     );
   }
     
@@ -342,6 +342,12 @@ class ThemeProvider extends ChangeNotifier {
         break;
     }
     await _storage.write(key: storageKey, value: color.value.toString());
+    await _storage.write(key: _getKey(_customPrimaryKey), value: _customColors.primary.value.toString());
+    await _storage.write(key: _getKey(_customSecondaryKey), value: _customColors.secondary.value.toString());
+    await _storage.write(key: _getKey(_customBackgroundKey), value: _customColors.background.value.toString());
+    await _storage.write(key: _getKey(_customSurfaceKey), value: _customColors.surface.value.toString());
+    await _storage.write(key: _getKey(_customTextKey), value: _customColors.text.value.toString());
+    await _storage.write(key: _getKey(_customSecondaryTextKey), value: _customColors.textSecondary.value.toString());
     notifyListeners();
   }
   
@@ -392,6 +398,7 @@ class ThemeProvider extends ChangeNotifier {
       surface: colors.surface,
       background: colors.background,
       onSurface: colors.text,
+      onSurfaceVariant: colors.textSecondary,
       surfaceContainer: colors.surface,
       surfaceContainerHigh: colors.surface,
       surfaceContainerHighest: colors.surface,

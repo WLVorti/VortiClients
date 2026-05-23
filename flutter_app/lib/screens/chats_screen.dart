@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../services/mute_service.dart';
 import '../models/models.dart';
@@ -258,9 +259,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
     
     return lastMessage;
   }
-    
-    return lastMessage;
-  }
 
   Widget _buildAvatar(String? avatarUrl, String fallbackChar, {String? userId}) {
     final fallbackColor = userId != null ? colorFromId(userId) : Theme.of(context).colorScheme.primary;
@@ -271,21 +269,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
         width: 40,
         height: 40,
         child: ClipOval(
-          child: Image.network(
-            fullUrl,
+          child: CachedNetworkImage(
+            imageUrl: fullUrl,
             fit: BoxFit.cover,
-            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-              if (wasSynchronouslyLoaded) return child;
-              return AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: frame != null ? child : CircularProgressIndicator(),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) {
-              print('[Avatar] Error loading $fullUrl: $error');
-              return CircleAvatar(
-                backgroundColor: fallbackColor,
-                child: Text(fallbackChar.toUpperCase()),
+            placeholder: (_, __) => const CircularProgressIndicator(),
+            errorWidget: (_, __, ___) {
+              return Container(
+                color: Colors.grey[300],
+                child: const Icon(Icons.person, color: Colors.white),
               );
             },
           ),
@@ -344,7 +335,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     trailing: Row(
