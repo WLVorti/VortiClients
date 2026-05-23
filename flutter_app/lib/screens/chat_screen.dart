@@ -1182,7 +1182,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ),
               child: SafeArea(
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
           IconButton(
             onPressed: _isUploading ? null : _showAttachmentOptions,
@@ -1211,10 +1211,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                   : 'Type a message...',
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
                               ),
+                              filled: true,
+                              fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 16,
-                                vertical: 8,
+                                vertical: 10,
                               ),
                               isDense: true,
                             ),
@@ -1568,6 +1571,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           'http://77.34.76.27:3000/download/${msg.fileId}?token=${widget.api.token}',
                       fileName: fileName,
                       isMe: isMe,
+                      showFileName: ext != 'm4a',
                     ),
                     const SizedBox(height: 4),
                     Align(
@@ -1906,11 +1910,13 @@ class _AudioPlayerWidget extends StatefulWidget {
   final String audioUrl;
   final String fileName;
   final bool isMe;
+  final bool showFileName;
 
   const _AudioPlayerWidget({
     required this.audioUrl,
     required this.fileName,
     required this.isMe,
+    this.showFileName = true,
   });
 
   @override
@@ -2007,17 +2013,18 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.fileName,
-                    style: TextStyle(
-                      color: widget.isMe
-                          ? Colors.white
-                          : Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.w500,
+                  if (widget.showFileName)
+                    Text(
+                      widget.fileName,
+                      style: TextStyle(
+                        color: widget.isMe
+                            ? Colors.white
+                            : Theme.of(context).colorScheme.onSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
                   if (_isInitialized) ...[
                     const SizedBox(height: 4),
                     SliderTheme(
