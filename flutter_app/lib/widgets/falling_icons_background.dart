@@ -13,10 +13,10 @@ class FallingIconsBackground extends StatefulWidget {
   const FallingIconsBackground({
     super.key,
     this.icons = _defaultIcons,
-    this.maxConcurrent = 15,
-    this.spawnInterval = const Duration(milliseconds: 800),
-    this.minSpeed = 8,
-    this.maxSpeed = 16,
+    this.maxConcurrent = 40,
+    this.spawnInterval = const Duration(milliseconds: 300),
+    this.minSpeed = 6,
+    this.maxSpeed = 14,
   });
 
   static const List<IconData> _defaultIcons = [
@@ -70,22 +70,22 @@ class _FallingIconsBackgroundState extends State<FallingIconsBackground>
     super.initState();
     _ticker = createTicker(_onTick);
     _ticker.start();
-    _spawnTimer = Timer.periodic(widget.spawnInterval, (_) => _spawnIcon());
-    for (int i = 0; i < 5; i++) {
-      _spawnIcon(initialOffset: _random.nextDouble() * 0.5);
+    for (int i = 0; i < 12; i++) {
+      _spawnIcon(initialOffset: _random.nextDouble() * 0.8);
     }
+    _spawnTimer = Timer.periodic(widget.spawnInterval, (_) => _spawnIcon());
   }
 
   void _spawnIcon({double? initialOffset}) {
     if (_icons.length >= widget.maxConcurrent) return;
-    final size = 16.0 + _random.nextDouble() * 20.0;
+    final size = 18.0 + _random.nextDouble() * 26.0;
     _icons.add(_FallingIcon(
       icon: widget.icons[_random.nextInt(widget.icons.length)],
       x: _random.nextDouble(),
       size: size,
       speed: widget.minSpeed + _random.nextDouble() * (widget.maxSpeed - widget.minSpeed),
-      rotation: _random.nextDouble() * 0.3 - 0.15,
-      maxOpacity: 0.15 + _random.nextDouble() * 0.2,
+      rotation: _random.nextDouble() * 0.4 - 0.2,
+      maxOpacity: 0.2 + _random.nextDouble() * 0.25,
       startTime: DateTime.now().subtract(
         Duration(milliseconds: (initialOffset ?? 0) * widget.maxSpeed * 1000 ~/ 1),
       ),
@@ -142,7 +142,7 @@ class _FallingIconsBackgroundState extends State<FallingIconsBackground>
                   child: Icon(
                     icon.icon,
                     size: icon.size,
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
               ),
