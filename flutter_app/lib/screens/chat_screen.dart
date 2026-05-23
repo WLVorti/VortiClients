@@ -19,7 +19,6 @@ import '../services/message_cache.dart';
 import '../models/models.dart';
 import 'user_profile_screen.dart';
 import 'group_info_screen.dart';
-import 'call_screen.dart';
 import 'image_viewer_screen.dart';
 
 const int _maxMessageLength = 10000;
@@ -619,32 +618,47 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _clearDraft();
 
     _pendingMessageTimers[pendingId]?.cancel();
-    _pendingMessageTimers[pendingId] = Timer(const Duration(seconds: 5), () {
+    _pendingMessageTimers[pendingId] = Timer(const Duration(seconds: 5), () async {
       if (!mounted) return;
       _pendingMessageTimers.remove(pendingId);
       
       final wasPending = _pendingMessageIds.remove(pendingId);
       ApiService.addLog('_sendMessage: timer fired chatId=${widget.chatId} pendingId=$pendingId wasPending=$wasPending');
-      if (wasPending) {
-        _messageController.text = text;
-        if (replyTo != null) {
-          setState(() {
-            _replyToMessageId = replyTo;
-            final msg = _messages.firstWhere(
-              (m) => m.id == replyTo,
-              orElse: () => Message(
-                id: '',
-                chatId: '',
-                userId: '',
-                text: '',
-                createdAt: 0,
-              ),
-            );
-            _replyToMessage = msg.id.isNotEmpty ? msg : null;
-          });
+      if (!wasPending) return;
+
+      // If WS dropped before the confirmation arrived, verify delivery via REST
+      try {
+        final recent = await widget.api.getMessages(widget.chatId, limit: 10);
+        final chatTimestamp = DateTime.now().millisecondsSinceEpoch;
+        final delivered = recent.any((m) =>
+          m.userId == _currentUserId &&
+          m.text == text &&
+          (chatTimestamp - m.createdAt).abs() < 60000);
+        if (delivered) {
+          ApiService.addLog('_sendMessage: message verified delivered via REST, suppressing error');
+          _refreshMessageStatus();
+          return;
         }
-        _showSnackBar('Failed to send message');
+      } catch (_) {}
+
+      _messageController.text = text;
+      if (replyTo != null) {
+        setState(() {
+          _replyToMessageId = replyTo;
+          final msg = _messages.firstWhere(
+            (m) => m.id == replyTo,
+            orElse: () => Message(
+              id: '',
+              chatId: '',
+              userId: '',
+              text: '',
+              createdAt: 0,
+            ),
+          );
+          _replyToMessage = msg.id.isNotEmpty ? msg : null;
+        });
       }
+      _showSnackBar('Failed to send message');
     });
   }
 
@@ -1005,59 +1019,56 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ],
         ),
         actions: [
-          IconButton(
-            icon: Icon(_isMuted ? Icons.notifications_off : Icons.notifications),
-            onPressed: () async {
-              await MuteService.toggle(widget.chatId);
-              await _loadMuteStatus();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () {
-              if (widget.otherUserId != null) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => UserProfileScreen(
-                      api: widget.api,
-                      userId: widget.otherUserId!,
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) async {
+              if (value == 'info') {
+                if (widget.otherUserId != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => UserProfileScreen(
+                        api: widget.api,
+                        userId: widget.otherUserId!,
+                      ),
                     ),
-                  ),
-                );
-              } else {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => GroupInfoScreen(
-                      api: widget.api,
-                      chatId: widget.chatId,
+                  );
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => GroupInfoScreen(
+                        api: widget.api,
+                        chatId: widget.chatId,
+                      ),
                     ),
-                  ),
-                );
+                  );
+                }
+              } else if (value == 'mute') {
+                await MuteService.toggle(widget.chatId);
+                await _loadMuteStatus();
               }
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.call),
-            onPressed: () async {
-              final result = await widget.api.createCall(widget.chatId);
-              if (result != null && result['status'] == 'success' && mounted) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => CallScreen(
-                      api: widget.api,
-                      callId: result['call']['id'],
-                      chatId: widget.chatId,
-                      callerName: widget.chatName,
-                      callType: result['call']['callType'] ?? 'video',
-                      isIncoming: false,
-                    ),
-                  ),
-                );
-              }
-            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'info',
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('Information'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'mute',
+                child: ListTile(
+                  leading: Icon(_isMuted ? Icons.notifications : Icons.notifications_off),
+                  title: Text(_isMuted ? 'Unmute' : 'Mute'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
         ],
       ),
