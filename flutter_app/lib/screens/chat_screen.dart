@@ -2,21 +2,21 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
-import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:record/record.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:audio_waveforms/audio_waveforms.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../utils/avatar_utils.dart';
 import '../services/api_service.dart';
 import '../services/message_cache.dart';
 import '../services/mute_service.dart';
 import '../models/models.dart';
-import '../utils/avatar_utils.dart';
 import '../widgets/falling_icons_background.dart';
 import 'user_profile_screen.dart';
 import 'group_info_screen.dart';
@@ -1080,22 +1080,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             onTap: () => FocusScope.of(context).unfocus(),
             behavior: HitTestBehavior.translucent,
             child: Column(
-              children: [
-                if (_replyToMessage != null)
-                  Container(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 4,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.blue,
-                            borderRadius: BorderRadius.circular(2),
+          children: [
+            if (_replyToMessage != null)
+              Container(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 4,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.blue,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1293,8 +1293,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ),
             ),
           ],
-          ),
         ),
+      ),
         ],
       ),
     );
