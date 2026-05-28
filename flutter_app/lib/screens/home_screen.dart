@@ -441,11 +441,14 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide.none,
                 ),
+                filled: true,
+                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 8,
+                  vertical: 10,
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
@@ -815,11 +818,14 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide.none,
                 ),
+                filled: true,
+                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 8,
+                  vertical: 10,
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(

@@ -146,6 +146,7 @@ class _VortiAppState extends State<VortiApp> {
   @override
   void dispose() {
     _tokenSubscription?.cancel();
+    MuteService.close();
     super.dispose();
   }
 

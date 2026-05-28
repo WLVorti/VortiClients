@@ -78,8 +78,8 @@ class NotificationService {
       provisional: false,
       sound: true,
     );
-    if (kDebugMode) {
-      print('Push permission: ${settings.authorizationStatus}');
+    if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      if (kDebugMode) print('Push permission denied — notifications disabled');
     }
   }
 

@@ -99,8 +99,10 @@ class ApiService {
   Future<void> clearCredentials() async {
     _token = null;
     _userId = null;
+    _fcmToken = null;
     await _storage.delete(key: 'token');
     await _storage.delete(key: 'userId');
+    await _storage.delete(key: 'fcm_token');
   }
 
   // ==================== Account switcher ====================

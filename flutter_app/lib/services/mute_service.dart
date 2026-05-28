@@ -6,7 +6,17 @@ class MuteService {
   static const _key = 'muted_chats';
   static SharedPreferences? _prefs;
   static ApiService? _api;
-  static final _client = http.Client();
+  static http.Client? _client;
+
+  static http.Client _getClient() {
+    _client ??= http.Client();
+    return _client!;
+  }
+
+  static void close() {
+    _client?.close();
+    _client = null;
+  }
 
   static Future<void> init() async {
     _prefs ??= await SharedPreferences.getInstance();
@@ -30,7 +40,7 @@ class MuteService {
       await _prefs?.setStringList(_key, muted);
     }
     if (_api != null) {
-      await _client.post(
+      await _getClient().post(
         Uri.parse('${ApiService.baseUrl}/chats/$chatId/mute'),
         headers: {'Authorization': 'Bearer ${_api!.token}'},
       );
@@ -43,7 +53,7 @@ class MuteService {
     muted.remove(chatId);
     await _prefs?.setStringList(_key, muted);
     if (_api != null) {
-      await _client.delete(
+      await _getClient().delete(
         Uri.parse('${ApiService.baseUrl}/chats/$chatId/mute'),
         headers: {'Authorization': 'Bearer ${_api!.token}'},
       );

@@ -9,7 +9,7 @@ import db, { closeDatabase } from './db/database';
 import { validate, registerSchema, loginSchema } from './middleware/validation';
 import { generateToken, verifyToken } from './auth/jwt';
 import { authMiddleware } from './middleware/auth';
-import { getChats, createChat, getChatMessages } from './handlers/rest/chats';
+import { getChats, createChat, getChatMessages, getChatMessageCount } from './handlers/rest/chats';
 import { getUsers, getUserPublicKey } from './handlers/rest/users';
 import { deleteMessage, editMessage, getUnreadCounters } from './handlers/rest/messages';
 import { upload, uploadFile, downloadFile, getFileInfo } from './handlers/rest/files';
@@ -20,6 +20,7 @@ import { addParticipant, removeParticipant, setParticipantRole, updateGroupName,
 import { createCall, acceptCall, rejectCall, endCall, getCall } from './handlers/rest/calls';
 import { muteChat, unmuteChat, isMuted } from './handlers/rest/mute';
 import { searchMessages } from './handlers/rest/search';
+import { refreshToken } from './handlers/rest/refresh';
 import { pushService } from './services/push';
 import { WebSocketClientMessage, WebSocketServerMessage, wsClientSchema } from './types';
 import { clients, addClient, removeClient, getOnlineUsers } from './handlers/websocket/broadcast';
@@ -154,10 +155,13 @@ app.post('/login', authRateLimit, validate(loginSchema), async (req, res) => {
   }
 });
 
+app.post('/auth/refresh', authRateLimit, refreshToken);
+
 app.get('/chats', authMiddleware, getChats);
 app.get('/chats/unread', authMiddleware, getUnreadCounters);
 app.post('/chats', authMiddleware, createChat);
 app.get('/chats/:id/messages', authMiddleware, getChatMessages);
+app.get('/chats/:id/messages/count', authMiddleware, getChatMessageCount);
 app.post('/chats/:chatId/mute', authMiddleware, muteChat);
 app.delete('/chats/:chatId/mute', authMiddleware, unmuteChat);
 

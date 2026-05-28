@@ -13,7 +13,7 @@ class FallingIconsBackground extends StatefulWidget {
   const FallingIconsBackground({
     super.key,
     this.icons = _defaultIcons,
-    this.maxConcurrent = 40,
+    this.maxConcurrent = 70,
     this.spawnInterval = const Duration(milliseconds: 300),
     this.minSpeed = 6,
     this.maxSpeed = 14,
