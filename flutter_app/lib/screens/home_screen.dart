@@ -719,7 +719,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     };
     widget.api.onOnlineUsersChanged = _onlineHandler;
     
-    _messageHandler = (msg) {
+    _messageHandler = (msg) async {
       final type = msg['type'];
       if (type == 'message' && mounted) {
         final chatId = msg['chatId'];
@@ -728,35 +728,25 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
         final index = _groups.indexWhere((c) => c.id == chatId);
 
         if (index != -1 && senderId != currentUserId) {
-          MuteService.isMuted(chatId).then((muted) {
-            if (!mounted) return;
-            setState(() {
-              if (!muted) {
-                _groupUnreadCounts[chatId] = (_groupUnreadCounts[chatId] ?? 0) + 1;
-              }
-              _groups[index] = Chat(
-                id: _groups[index].id,
-                name: _groups[index].name,
-                type: _groups[index].type,
-                createdAt: _groups[index].createdAt,
-                lastMessage: msg['text'],
-                lastMessageAt: msg['timestamp'],
-                participants: _groups[index].participants,
-                unreadCount: muted ? _groups[index].unreadCount : (_groupUnreadCounts[chatId] ?? 0),
-                avatarUrl: _groups[index].avatarUrl,
-              );
-            });
+          final muted = await MuteService.isMuted(chatId);
+          if (!mounted) return;
+          setState(() {
+            if (!muted) {
+              _groupUnreadCounts[chatId] = (_groupUnreadCounts[chatId] ?? 0) + 1;
+            }
+            _groups[index] = Chat(
+              id: _groups[index].id,
+              name: _groups[index].name,
+              type: _groups[index].type,
+              createdAt: _groups[index].createdAt,
+              lastMessage: msg['text'],
+              lastMessageAt: msg['timestamp'],
+              participants: _groups[index].participants,
+              unreadCount: muted ? _groups[index].unreadCount : (_groupUnreadCounts[chatId] ?? 0),
+              avatarUrl: _groups[index].avatarUrl,
+            );
           });
         }
-      }
-      if (type == 'online' && mounted) {
-        setState(() {
-          _onlineUsers.clear();
-          _onlineUsers.addAll(widget.api.onlineUsers);
-        });
-      }
-      if (type == 'participant_added' || type == 'participant_removed' || type == 'group_name_changed') {
-        _loadGroups();
       }
     };
     widget.api.addMessageListener(_messageHandler!);
@@ -1121,6 +1111,7 @@ class CallsTab extends StatefulWidget {
 
 class _CallsTabState extends State<CallsTab> {
   bool _hasIncomingCall = false;
+  bool _isShowingCallDialog = false;
   String? _incomingCallId;
   String? _incomingCallerName;
   String? _incomingCallType;
@@ -1183,7 +1174,8 @@ class _CallsTabState extends State<CallsTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (_hasIncomingCall && _incomingCallId != null) {
+    if (_hasIncomingCall && _incomingCallId != null && !_isShowingCallDialog) {
+      _isShowingCallDialog = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         showDialog(
           context: context,
@@ -1211,16 +1203,22 @@ class _CallsTabState extends State<CallsTab> {
             ),
             actions: [
               TextButton(
-                onPressed: _rejectCall,
+                onPressed: () {
+                  _isShowingCallDialog = false;
+                  _rejectCall();
+                },
                 child: const Text('Decline'),
               ),
               FilledButton(
-                onPressed: _acceptCall,
+                onPressed: () {
+                  _isShowingCallDialog = false;
+                  _acceptCall();
+                },
                 child: const Text('Accept'),
               ),
             ],
           ),
-        );
+        ).whenComplete(() => _isShowingCallDialog = false);
       });
     }
 

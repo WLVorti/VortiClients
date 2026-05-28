@@ -166,7 +166,12 @@ class NotificationService {
   }
 
   Future<String?> getToken() async {
-    return await _messaging.getToken();
+    try {
+      return await _messaging.getToken();
+    } catch (e) {
+      if (kDebugMode) print('FCM getToken error: $e');
+      return null;
+    }
   }
 
   Stream<String?> get onTokenRefresh => _messaging.onTokenRefresh;
