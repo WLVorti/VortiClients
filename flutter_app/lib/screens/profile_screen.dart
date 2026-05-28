@@ -169,6 +169,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final result = await FilePicker.platform.pickFiles(type: FileType.image);
     if (result != null && result.files.single.path != null) {
       try {
+        // Copy to app temp dir to ensure stable access
+        final tmpDir = await getTemporaryDirectory();
+        final localImage = File('${tmpDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg');
+        await localImage.writeAsBytes(await File(result.files.single.path!).readAsBytes());
+
         final controller = ImageCropperController();
         final file = await Navigator.push<Uint8List>(
           context,
@@ -186,8 +191,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   TextButton(
                     onPressed: () async {
-                      final bytes = await controller.crop();
-                      if (bytes != null) Navigator.pop(context, bytes);
+                      try {
+                        final bytes = await controller.crop();
+                        if (context.mounted) Navigator.pop(context, bytes);
+                      } catch (_) {
+                        if (context.mounted) Navigator.pop(context);
+                      }
                     },
                     child: const Text('Save'),
                   ),
@@ -195,16 +204,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               body: ImageCropperWidget(
                 controller: controller,
-                image: FileImage(File(result.files.single.path!)),
+                image: FileImage(localImage),
                 aspectRatio: CropperRatio.ratio1_1,
                 style: CropperStyle(showGrid: true),
               ),
             ),
           ),
         );
+        localImage.delete().catchError((_) {});
         if (file != null) {
-          final dir = await getTemporaryDirectory();
-          final out = File('${dir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png');
+          final out = File('${tmpDir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png');
           await out.writeAsBytes(file);
           final avatarUrl = await widget.api.uploadAvatar(out);
           out.delete().catchError((_) {});
@@ -215,7 +224,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }
         }
       } catch (e) {
-        // ignore
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to upload avatar: $e')),
+          );
+        }
       } finally {
         if (mounted) setState(() => _isUploadingAvatar = false);
       }
