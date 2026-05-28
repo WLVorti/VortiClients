@@ -11,18 +11,13 @@ import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
 
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-}
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   ApiService.addLog('Firebase.initializeApp() starting...');
   await Firebase.initializeApp();
   ApiService.addLog('Firebase.initializeApp() done');
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   await MessageCache.init();
 
@@ -92,34 +87,38 @@ class _VortiAppState extends State<VortiApp> {
     }
   }
 
+  StreamSubscription<String?>? _tokenSubscription;
+
   Future<void> _initNotifications() async {
     ApiService.addLog('_initNotifications: initialize()...');
     await _notifications.initialize();
     ApiService.addLog('_initNotifications: initialize() done');
 
-    _notifications.onTokenRefresh.listen((token) async {
+    _tokenSubscription?.cancel();
+    _tokenSubscription = _notifications.onTokenRefresh.listen((token) async {
       if (token != null && _api.token != null) {
         await _api.registerDevice(token, 'android');
         await _api.saveFcmToken(token);
       }
+    }, onError: (e) {
+      ApiService.addLog('Token refresh error: $e');
     });
 
-    _notifications.onNotificationTap = (chatId, data) async {
+    _notifications.onNavigateToChat = (chatId, data) async {
       ApiService.addLog('Notification tapped: chatId=$chatId');
-      if (chatId != null && mounted) {
-        final chat = await _api.getChat(chatId);
-        if (mounted && chat != null) {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => ChatScreen(
-                api: _api,
-                chatId: chat.id,
-                chatName: chat.name ?? 'Chat',
-                avatarUrl: chat.avatarUrl,
-              ),
+      if (!mounted) return;
+      final chat = await _api.getChat(chatId);
+      if (mounted && chat != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ChatScreen(
+              api: _api,
+              chatId: chat.id,
+              chatName: chat.name ?? 'Chat',
+              avatarUrl: chat.avatarUrl,
             ),
-          );
-        }
+          ),
+        );
       }
     };
 
@@ -132,6 +131,22 @@ class _VortiAppState extends State<VortiApp> {
         await _api.registerDevice(token, 'android');
       }
     }
+
+    ApiService.addLog('_initNotifications: getInitialMessage()...');
+    final initialData = await _notifications.getInitialMessage();
+    if (initialData != null) {
+      ApiService.addLog('App launched from notification: $initialData');
+      final chatId = initialData['chatId'] as String?;
+      if (chatId != null) {
+        _notifications.onNavigateToChat?.call(chatId, initialData);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _tokenSubscription?.cancel();
+    super.dispose();
   }
 
   @override
