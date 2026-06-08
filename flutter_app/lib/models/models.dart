@@ -250,6 +250,7 @@ class Message {
     bool? isDeleted,
     bool? isEdited,
     String? editedText,
+    String? replyText,
     MessageStatus? status,
   }) {
     return Message(
@@ -258,7 +259,7 @@ class Message {
       userId: userId,
       text: text ?? this.text,
       replyTo: replyTo,
-      replyText: replyText,
+      replyText: replyText ?? this.replyText,
       replyUsername: replyUsername,
       fileId: fileId,
       createdAt: createdAt,

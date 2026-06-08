@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VortiMes</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <div class="container">
+      <div class="auth-card">
+        <div class="logo">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+            <rect width="40" height="40" rx="10" fill="#E53935"/>
+            <path d="M12 28V16l8 6-8 6zM20 28V16l8 6-8 6z" fill="white"/>
+          </svg>
+          <h1>VortiMes</h1>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="login">Войти</button>
+          <button class="tab" data-tab="register">Регистрация</button>
+        </div>
+
+        <form id="loginForm" class="auth-form active">
+          <div class="field">
+            <label for="loginUsername">Имя пользователя</label>
+            <input type="text" id="loginUsername" maxlength="32" placeholder="username" autocomplete="username">
+            <div class="field-error" id="loginUsernameError"></div>
+          </div>
+          <div class="field">
+            <label for="loginPassword">Пароль</label>
+            <div class="password-wrapper">
+              <input type="password" id="loginPassword" maxlength="128" placeholder="••••••••" autocomplete="current-password">
+              <button type="button" class="toggle-password" data-target="loginPassword" aria-label="Показать пароль">
+                <svg class="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path class="eye-open" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle class="eye-open" cx="12" cy="12" r="3"/>
+                  <path class="eye-closed" d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" style="display:none"/>
+                  <line class="eye-closed" x1="1" y1="1" x2="23" y2="23" style="display:none"/>
+                </svg>
+              </button>
+            </div>
+            <div class="field-error" id="loginPasswordError"></div>
+          </div>
+          <div class="field-error general" id="loginError"></div>
+          <button type="submit" class="btn-primary">Войти</button>
+        </form>
+
+        <form id="registerForm" class="auth-form">
+          <div class="field">
+            <label for="regUsername">Имя пользователя</label>
+            <input type="text" id="regUsername" maxlength="32" placeholder="username" autocomplete="username">
+            <div class="field-hint" id="regUsernameHint">3–32 символа, только буквы, цифры и _</div>
+            <div class="field-error" id="regUsernameError"></div>
+          </div>
+          <div class="field">
+            <label for="regPassword">Пароль</label>
+            <div class="password-wrapper">
+              <input type="password" id="regPassword" maxlength="128" placeholder="••••••••" autocomplete="new-password">
+              <button type="button" class="toggle-password" data-target="regPassword" aria-label="Показать пароль">
+                <svg class="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path class="eye-open" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle class="eye-open" cx="12" cy="12" r="3"/>
+                  <path class="eye-closed" d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" style="display:none"/>
+                  <line class="eye-closed" x1="1" y1="1" x2="23" y2="23" style="display:none"/>
+                </svg>
+              </button>
+            </div>
+            <div class="field-error" id="regPasswordError"></div>
+          </div>
+
+          <div class="strength-bar-wrapper" id="strengthBar">
+            <div class="strength-bar" id="strengthBarFill"></div>
+          </div>
+          <div class="strength-label" id="strengthLabel"></div>
+
+          <div class="requirements" id="requirements">
+            <div class="req" data-req="length"><span class="req-icon">○</span> Минимум 8 символов</div>
+            <div class="req" data-req="lowercase"><span class="req-icon">○</span> Строчная буква (a–z)</div>
+            <div class="req" data-req="uppercase"><span class="req-icon">○</span> Заглавная буква (A–Z)</div>
+            <div class="req" data-req="digit"><span class="req-icon">○</span> Цифра (0–9)</div>
+            <div class="req" data-req="special"><span class="req-icon">○</span> Спецсимвол (!@#$%^&*(),.?":{}|&lt;&gt;)</div>
+          </div>
+
+          <div class="field-error general" id="regError"></div>
+          <button type="submit" class="btn-primary">Регистрация</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/waterfall.js"></script>
+  <script src="js/home.js"></script>
+  <script src="js/auth.js"></script>
+</body>
+</html>

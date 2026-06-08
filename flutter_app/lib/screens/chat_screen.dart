@@ -82,6 +82,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   int _recordingSeconds = 0;
   Timer? _recordingTimer;
   final Map<String, String> _participantNames = {};
+  final Map<String, AudioPlayer> _audioPlayers = {};
   bool _isMuted = false;
 
   @override
@@ -391,11 +392,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
 
     if (type == 'message_deleted' && msg['chatId'] == widget.chatId) {
+      final deletedId = msg['messageId'] as String;
       setState(() {
-        final index = _messages.indexWhere((m) => m.id == msg['messageId']);
+        final index = _messages.indexWhere((m) => m.id == deletedId);
         if (index != -1) {
           _messages[index] = _messages[index].copyWith(text: '[deleted]');
           MessageCache.saveMessage(_messages[index]);
+        }
+        for (int i = 0; i < _messages.length; i++) {
+          if (_messages[i].replyTo == deletedId) {
+            _messages[i] = _messages[i].copyWith(replyText: '[deleted]');
+            MessageCache.saveMessage(_messages[i]);
+          }
         }
       });
     }
@@ -898,6 +906,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _editController.dispose();
     _scrollController.dispose();
     widget.api.removeMessageListener(_handleMessage);
+    for (final player in _audioPlayers.values) {
+      player.dispose();
+    }
+    _audioPlayers.clear();
     super.dispose();
   }
 
@@ -1545,6 +1557,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
 
     if (hasFile && isAudio) {
+      debugPrint('[_buildMessage.audio] msgId=${msg.id} deleted=${msg.isDeleted} fileId=${msg.fileId}');
+      final audioPlayer = _audioPlayers.putIfAbsent(msg.id, () => AudioPlayer());
       return GestureDetector(
         onLongPress: () => _showMessageMenu(msg),
         child: Align(
@@ -1573,6 +1587,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _AudioPlayerWidget(
+                      audioPlayer: audioPlayer,
                       audioUrl:
                           'http://77.34.76.27:3000/download/${msg.fileId}?token=${widget.api.token}',
                       fileName: fileName,
@@ -1914,11 +1929,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
 class _AudioPlayerWidget extends StatefulWidget {
   final String audioUrl;
+  final AudioPlayer audioPlayer;
   final String fileName;
   final bool isMe;
   final bool showFileName;
 
   const _AudioPlayerWidget({
+    super.key,
+    required this.audioPlayer,
     required this.audioUrl,
     required this.fileName,
     required this.isMe,
@@ -1930,17 +1948,30 @@ class _AudioPlayerWidget extends StatefulWidget {
 }
 
 class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
+  static int _instanceCounter = 0;
+  final int _instanceId = _instanceCounter++;
   late AudioPlayer _audioPlayer;
   bool _isInitialized = false;
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  StreamSubscription? _positionSub;
+  StreamSubscription? _playerStateSub;
 
   @override
   void initState() {
     super.initState();
-    _audioPlayer = AudioPlayer();
+    debugPrint('[_AudioPlayerWidgetState#$runtimeType.initState] instance=$_instanceId url=${widget.audioUrl}');
+    _audioPlayer = widget.audioPlayer;
     _initAudio();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AudioPlayerWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.audioUrl != widget.audioUrl) {
+      _audioPlayer.setUrl(widget.audioUrl);
+    }
   }
 
   Future<void> _initAudio() async {
@@ -1990,7 +2021,9 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
 
   @override
   void dispose() {
-    _audioPlayer.dispose();
+    debugPrint('[_AudioPlayerWidgetState#$runtimeType.dispose] instance=$_instanceId');
+    _positionSub?.cancel();
+    _playerStateSub?.cancel();
     super.dispose();
   }
 

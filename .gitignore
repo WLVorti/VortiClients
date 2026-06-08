@@ -1,6 +1,7 @@
-# Exclude everything except flutter_app/android/, flutter_app/lib/ and essentials
+# Exclude everything except flutter_app/android/, flutter_app/lib/, web/ and essentials
 /*
 !/flutter_app/
+!/web/
 !/.gitignore
 !/README.md
 !/API.md
@@ -37,3 +38,6 @@ Thumbs.db
 .idea/
 *.iml
 .vscode/
+
+# Android
+flutter_app/android/.kotlin/
