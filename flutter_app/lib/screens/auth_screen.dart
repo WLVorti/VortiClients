@@ -203,9 +203,7 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const SizedBox(height: 48),
-              const Icon(Icons.message, size: 80, color: Colors.blue),
-              const SizedBox(height: 16),
+              const SizedBox(height: 32),
               Text(
                 'Vorti Messenger',
                 style: Theme.of(context).textTheme.headlineMedium,
