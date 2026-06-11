@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
@@ -131,98 +132,151 @@ class _ChatsScreenState extends State<ChatsScreen> {
   Future<void> _createChat() async {
     final searchController = TextEditingController();
     List<User> users = [];
+    Timer? _debounce;
 
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) => Padding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(ctx).viewInsets.bottom,
-            left: 16,
-            right: 16,
-            top: 16,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'New Chat',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: searchController,
-                decoration: const InputDecoration(
-                  hintText: 'Search users...',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.search),
+              // Drag handle
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                onChanged: (value) async {
-                  if (value.length >= 2) {
-                    final result = await widget.api.searchUsers(value);
-                    setSheetState(() => users = result);
-                  }
-                },
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: Row(
+                  children: [
+                    Text(
+                      'Новый чат',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
-              SizedBox(
-                height: 200,
-                child: ListView.builder(
-                  itemCount: users.length,
-                  itemBuilder: (_, i) => ListTile(
-                    leading: Stack(
-                      children: [
-                        _buildAvatar(users[i].avatarUrl, users[i].username[0], userId: users[i].id),
-                        if (_onlineUsers.contains(users[i].id))
-                          Positioned(
-                            right: 0,
-                            bottom: 0,
-                            child: Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: Colors.green,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.white,
-                                  width: 2,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    title: Text(users[i].username),
-                    subtitle: _onlineUsers.contains(users[i].id)
-                        ? const Text(
-                            'Online',
-                            style: TextStyle(color: Colors.green),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: TextField(
+                  controller: searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Поиск пользователей...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 20),
+                            onPressed: () {
+                              searchController.clear();
+                              setSheetState(() => users = []);
+                            },
                           )
-                        : const Text(
-                            'Offline',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                    onTap: () async {
-                      final chatId = await widget.api.createChat('direct', [
-                        users[i].id,
-                      ]);
-                      if (ctx.mounted) Navigator.pop(ctx);
-                      if (chatId != null && mounted) {
-                        _loadData();
-                        _openChat(chatId, users[i].username);
-                      }
-                    },
+                        : null,
                   ),
+                  onChanged: (value) {
+                    _debounce?.cancel();
+                    if (value.length < 2) {
+                      setSheetState(() => users = []);
+                      return;
+                    }
+                    _debounce = Timer(const Duration(milliseconds: 300), () async {
+                      final result = await widget.api.searchUsers(value);
+                      if (searchController.text == value) {
+                        setSheetState(() => users = result);
+                      }
+                    });
+                  },
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
+              if (users.isEmpty && searchController.text.length >= 2)
+                const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Text('Пользователи не найдены',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              else
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    itemCount: users.length,
+                    itemBuilder: (_, i) => Card(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      elevation: 0,
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ListTile(
+                        leading: Stack(
+                          children: [
+                            _buildAvatar(users[i].avatarUrl, users[i].username[0], userId: users[i].id),
+                            if (_onlineUsers.contains(users[i].id))
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: Colors.green,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Theme.of(context).colorScheme.surface, width: 2),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        title: Text(users[i].username, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text(
+                          _onlineUsers.contains(users[i].id) ? 'Online' : 'Offline',
+                          style: TextStyle(
+                            color: _onlineUsers.contains(users[i].id) ? Colors.green : Colors.grey,
+                            fontSize: 13,
+                          ),
+                        ),
+                        trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        onTap: () async {
+                          final chatId = await widget.api.createChat('direct', [users[i].id]);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (chatId != null && mounted) {
+                            _loadData();
+                            _openChat(chatId, users[i].username);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
             ],
           ),
         ),
       ),
-    );
+    ).whenComplete(() => _debounce?.cancel());
   }
 
   void _openChat(String chatId, String name) {
