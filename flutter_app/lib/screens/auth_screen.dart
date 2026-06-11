@@ -196,179 +196,229 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const SizedBox(height: 32),
+              // Logo
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(Icons.forum_rounded, size: 36, color: cs.onPrimaryContainer),
+              ),
+              const SizedBox(height: 16),
               Text(
                 'Vorti Messenger',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              const SizedBox(height: 48),
-
-              // Username
-              TextField(
-                controller: _usernameController,
-                decoration: InputDecoration(
-                  labelText: 'Username',
-                  hintText: '3-32 символа: буквы, цифры, _',
-                  border: const OutlineInputBorder(),
-                  prefixIcon: const Icon(Icons.person),
-                  errorText: _usernameError.isEmpty ? null : _usernameError,
-                  suffixIcon: _usernameValid
-                      ? const Icon(Icons.check_circle, color: Colors.green)
-                      : null,
-                  counterText: '${_usernameController.text.length}/32',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: cs.onBackground,
                 ),
-                maxLength: 32,
-                textInputAction: TextInputAction.next,
-                autocorrect: false,
               ),
-              const SizedBox(height: 16),
-
-              // Password
-              TextField(
-                controller: _passwordController,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  hintText: '8-128 символов',
-                  border: const OutlineInputBorder(),
-                  prefixIcon: const Icon(Icons.lock),
-                  errorText: _passwordError.isEmpty ? null : _passwordError,
-                  suffixIcon: _passwordValid
-                      ? const Icon(Icons.check_circle, color: Colors.green)
-                      : null,
-                  counterText: '${_passwordController.text.length}/128',
+              const SizedBox(height: 8),
+              Text(
+                _isLogin ? 'Войдите в свой аккаунт' : 'Создайте новый аккаунт',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
                 ),
-                maxLength: 128,
-                obscureText: true,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _submit(),
               ),
+              const SizedBox(height: 32),
 
-              // Требования к паролю (при регистрации)
-              if (!_isLogin) ...[
-                if (_passwordController.text.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: _getPasswordStrength() / 6,
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              _getStrengthColor(_getPasswordStrength()),
-                            ),
-                            minHeight: 6,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        _getStrengthText(_getPasswordStrength()),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: _getStrengthColor(_getPasswordStrength()),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Требования к паролю:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      _buildRequirement(
-                        '8-128 символов',
-                        _passwordController.text.length >= 8 &&
-                            _passwordController.text.length <= 128,
-                      ),
-                      _buildRequirement(
-                        'Строчная буква (a-z)',
-                        RegExp(r'[a-z]').hasMatch(_passwordController.text),
-                      ),
-                      _buildRequirement(
-                        'Заглавная буква (A-Z)',
-                        RegExp(r'[A-Z]').hasMatch(_passwordController.text),
-                      ),
-                      _buildRequirement(
-                        'Цифра (0-9)',
-                        RegExp(r'[0-9]').hasMatch(_passwordController.text),
-                      ),
-                      _buildRequirement(
-                        'Спецсимвол (!@#\$%^&*...)',
-                        RegExp(
-                          r'[!@#$%^&*(),.?":{}|<>]',
-                        ).hasMatch(_passwordController.text),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Text(_error!, style: const TextStyle(color: Colors.red)),
-              ],
-              const SizedBox(height: 24),
-
-              SizedBox(
+              // Form card
+              Container(
                 width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _submit,
-                  child: _isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : Text(_isLogin ? 'Войти' : 'Регистрация'),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Username
+                    TextField(
+                      controller: _usernameController,
+                      decoration: InputDecoration(
+                        labelText: 'Логин',
+                        hintText: '3-32 символа: буквы, цифры, _',
+                        prefixIcon: const Icon(Icons.person_outline),
+                        errorText: _usernameError.isEmpty ? null : _usernameError,
+                        suffixIcon: _usernameValid
+                            ? const Icon(Icons.check_circle, color: Colors.green)
+                            : null,
+                        counterText: '${_usernameController.text.length}/32',
+                      ),
+                      maxLength: 32,
+                      textInputAction: TextInputAction.next,
+                      autocorrect: false,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Password
+                    TextField(
+                      controller: _passwordController,
+                      decoration: InputDecoration(
+                        labelText: 'Пароль',
+                        hintText: '8-128 символов',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        errorText: _passwordError.isEmpty ? null : _passwordError,
+                        suffixIcon: _passwordValid
+                            ? const Icon(Icons.check_circle, color: Colors.green)
+                            : null,
+                        counterText: '${_passwordController.text.length}/128',
+                      ),
+                      maxLength: 128,
+                      obscureText: true,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submit(),
+                    ),
+
+                    // Password strength + requirements (only in register mode)
+                    if (!_isLogin) ...[
+                      if (_passwordController.text.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: _getPasswordStrength() / 6,
+                                  backgroundColor: cs.surfaceContainerHighest,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    _getStrengthColor(_getPasswordStrength()),
+                                  ),
+                                  minHeight: 6,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              _getStrengthText(_getPasswordStrength()),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: _getStrengthColor(_getPasswordStrength()),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Требования к паролю:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            _buildRequirement(
+                              '8-128 символов',
+                              _passwordController.text.length >= 8 && _passwordController.text.length <= 128,
+                            ),
+                            _buildRequirement(
+                              'Строчная буква (a-z)',
+                              RegExp(r'[a-z]').hasMatch(_passwordController.text),
+                            ),
+                            _buildRequirement(
+                              'Заглавная буква (A-Z)',
+                              RegExp(r'[A-Z]').hasMatch(_passwordController.text),
+                            ),
+                            _buildRequirement(
+                              'Цифра (0-9)',
+                              RegExp(r'[0-9]').hasMatch(_passwordController.text),
+                            ),
+                            _buildRequirement(
+                              'Спецсимвол (!@#\$%^&*...)',
+                              RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(_passwordController.text),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    // Error
+                    if (_error != null) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: cs.errorContainer,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          _error!,
+                          style: TextStyle(color: cs.onErrorContainer, fontSize: 13),
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 20),
+
+                    // Submit button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _submit,
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 22, height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                              )
+                            : Text(_isLogin ? 'Войти' : 'Создать аккаунт', style: const TextStyle(fontSize: 16)),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
+
+              const SizedBox(height: 20),
+
+              // Toggle login/register
               TextButton(
                 onPressed: () => setState(() => _isLogin = !_isLogin),
                 child: Text(
-                  _isLogin
-                      ? 'Нет аккаунта? Зарегистрироваться'
-                      : 'Есть аккаунт? Войти',
+                  _isLogin ? 'Нет аккаунта? Зарегистрироваться' : 'Уже есть аккаунт? Войти',
+                  style: TextStyle(color: cs.primary, fontWeight: FontWeight.w500),
                 ),
               ),
-              const SizedBox(height: 48),
-              const SizedBox(height: 16),
-              TextButton.icon(
-                onPressed: () {
-                  final logs = ApiService.getLogs();
-                  Clipboard.setData(ClipboardData(text: logs));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Логи скопированы (${ApiService.logs.length} записей)')),
-                  );
-                },
-                icon: const Icon(Icons.bug_report, size: 18),
-                label: const Text('Копировать логи'),
+
+              // Debug (subtle)
+              Opacity(
+                opacity: 0.25,
+                child: TextButton.icon(
+                  onPressed: () {
+                    final logs = ApiService.getLogs();
+                    Clipboard.setData(ClipboardData(text: logs));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Логи скопированы (${ApiService.logs.length} записей)')),
+                    );
+                  },
+                  icon: const Icon(Icons.bug_report, size: 12),
+                  label: const Text('Копировать логи', style: TextStyle(fontSize: 10)),
+                ),
               ),
+              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -377,22 +427,25 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Widget _buildRequirement(String text, bool met) {
-    return Row(
-      children: [
-        Icon(
-          met ? Icons.check : Icons.circle_outlined,
-          size: 14,
-          color: met ? Colors.green : Colors.grey,
-        ),
-        const SizedBox(width: 8),
-        Text(
-          text,
-          style: TextStyle(
-            fontSize: 12,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            met ? Icons.check_circle : Icons.circle_outlined,
+            size: 14,
             color: met ? Colors.green : Colors.grey,
           ),
-        ),
-      ],
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              color: met ? Colors.green : Colors.grey,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
