@@ -59,7 +59,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             backgroundImage: (_profile!.avatarUrl != null &&
                                     _profile!.avatarUrl!.isNotEmpty)
                                 ? CachedNetworkImageProvider(
-                                    'http://77.34.76.27:3000${_profile!.avatarUrl}',
+                                    'https://wlvorti.ru:3000${_profile!.avatarUrl}',
                                   )
                                 : null,
                             child: (_profile!.avatarUrl == null ||

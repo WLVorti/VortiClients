@@ -954,7 +954,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     radius: 16,
                     backgroundColor: Colors.transparent,
                     backgroundImage: widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
-                        ? CachedNetworkImageProvider('http://77.34.76.27:3000${widget.avatarUrl}')
+                        ? CachedNetworkImageProvider('https://wlvorti.ru:3000${widget.avatarUrl}')
                         : null,
                     onBackgroundImageError: widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
                         ? (_, __) {}
@@ -1366,7 +1366,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         hasFile && ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].contains(ext);
 
     if (hasFile && isImage) {
-      final imageUrl = 'http://77.34.76.27:3000/download/${msg.fileId}?token=${widget.api.token}';
+      final imageUrl = 'https://wlvorti.ru:3000/download/${msg.fileId}?token=${widget.api.token}';
       return GestureDetector(
         onTap: () {
           Navigator.of(context).push(
@@ -1396,7 +1396,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: CachedNetworkImage(
-                      imageUrl: 'http://77.34.76.27:3000/download/${msg.fileId}?token=${widget.api.token}',
+                      imageUrl: 'https://wlvorti.ru:3000/download/${msg.fileId}?token=${widget.api.token}',
                       fit: BoxFit.contain,
                       errorWidget: (_, __, ___) => Container(
                         padding: const EdgeInsets.all(12),
@@ -1486,7 +1486,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         onLongPress: () => _showMessageMenu(msg),
         child: GestureDetector(
           onTap: () => _openVideoFullscreen(
-            'http://77.34.76.27:3000/download/${msg.fileId}?token=${widget.api.token}',
+            'https://wlvorti.ru:3000/download/${msg.fileId}?token=${widget.api.token}',
           ),
           child: Align(
             alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -1507,7 +1507,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(12),
                       child: _VideoThumbnail(
                         videoUrl:
-                            'http://77.34.76.27:3000/download/${msg.fileId}?token=${widget.api.token}',
+                            'https://wlvorti.ru:3000/download/${msg.fileId}?token=${widget.api.token}',
                         fileName: fileName,
                       ),
                     ),
@@ -1589,7 +1589,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     _AudioPlayerWidget(
                       audioPlayer: audioPlayer,
                       audioUrl:
-                          'http://77.34.76.27:3000/download/${msg.fileId}?token=${widget.api.token}',
+                          'https://wlvorti.ru:3000/download/${msg.fileId}?token=${widget.api.token}',
                       fileName: fileName,
                       isMe: isMe,
                       showFileName: ext != 'm4a',

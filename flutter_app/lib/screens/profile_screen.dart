@@ -251,7 +251,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (_profile!.avatarUrl!.startsWith('http')) {
       return _profile!.avatarUrl!;
     }
-    return 'http://77.34.76.27:3000${_profile!.avatarUrl}';
+    return 'https://wlvorti.ru:3000${_profile!.avatarUrl}';
   }
 
   @override
@@ -1001,7 +1001,7 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
                       leading: CircleAvatar(
                         backgroundColor: colorFromId(account.id),
                         backgroundImage: account.avatarUrl != null
-                            ? CachedNetworkImageProvider('http://77.34.76.27:3000${account.avatarUrl}')
+                            ? CachedNetworkImageProvider('https://wlvorti.ru:3000${account.avatarUrl}')
                             : null,
                         child: account.avatarUrl == null
                             ? Text(_getAccountInitial(account))

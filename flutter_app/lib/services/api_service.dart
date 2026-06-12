@@ -11,8 +11,8 @@ import '../models/account.dart';
 import 'theme_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://77.34.76.27:3000';
-  static const String wsUrl = 'ws://77.34.76.27:3000';
+  static const String baseUrl = 'https://wlvorti.ru:3000';
+  static const String wsUrl = 'wss://wlvorti.ru:3000';
   static final List<String> logs = [];
 
   static void init() {

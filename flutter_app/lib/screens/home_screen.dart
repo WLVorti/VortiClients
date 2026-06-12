@@ -11,7 +11,6 @@ import 'auth_screen.dart';
 import 'profile_screen.dart';
 import 'user_profile_screen.dart';
 import 'group_info_screen.dart';
-import 'call_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final ApiService api;
@@ -48,7 +47,6 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           ChatsTab(api: widget.api),
           CommunitiesTab(api: widget.api),
-          CallsTab(api: widget.api),
           ProfileTab(api: widget.api),
         ],
       ),
@@ -65,11 +63,6 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.group_outlined),
             selectedIcon: Icon(Icons.group),
             label: 'Communities',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.call_outlined),
-            selectedIcon: Icon(Icons.call),
-            label: 'Calls',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
@@ -186,7 +179,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
     final fallbackColor = userId != null ? colorFromId(userId) : Theme.of(context).colorScheme.primary;
     final initials = Text(fallbackChar.toUpperCase());
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
-      final fullUrl = 'http://77.34.76.27:3000$avatarUrl';
+      final fullUrl = 'https://wlvorti.ru:3000$avatarUrl';
       return Stack(
         children: [
           CircleAvatar(backgroundColor: fallbackColor, child: initials),
@@ -772,7 +765,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     final fallbackColor = userId != null ? colorFromId(userId) : Theme.of(context).colorScheme.primary;
     final initials = Text(fallbackChar.toUpperCase());
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
-      final fullUrl = 'http://77.34.76.27:3000$avatarUrl';
+      final fullUrl = 'https://wlvorti.ru:3000$avatarUrl';
       return Stack(
         children: [
           CircleAvatar(backgroundColor: fallbackColor, child: initials),
@@ -795,6 +788,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
         automaticallyImplyLeading: false,
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadGroups),
+          IconButton(icon: const Icon(Icons.add), onPressed: _createGroup),
         ],
       ),
       body: Column(
@@ -1100,153 +1094,6 @@ builder: (ctx, setSheetState) => Padding(
   }
 }
 
-class CallsTab extends StatefulWidget {
-  final ApiService api;
-
-  const CallsTab({super.key, required this.api});
-
-  @override
-  State<CallsTab> createState() => _CallsTabState();
-}
-
-class _CallsTabState extends State<CallsTab> {
-  bool _hasIncomingCall = false;
-  bool _isShowingCallDialog = false;
-  String? _incomingCallId;
-  String? _incomingCallerName;
-  String? _incomingCallType;
-
-  @override
-  void initState() {
-    super.initState();
-    _setupCallHandlers();
-  }
-
-  void _setupCallHandlers() {
-    widget.api.onIncomingCall = (callData) {
-      if (mounted) {
-        setState(() {
-          _hasIncomingCall = true;
-          _incomingCallId = callData['callId'] as String?;
-          _incomingCallerName = callData['callerName'] as String?;
-          _incomingCallType = callData['callType'] as String?;
-        });
-      }
-    };
-
-    widget.api.onCallEnded = (callId) {
-      if (mounted) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      }
-    };
-  }
-
-  void _acceptCall() async {
-    if (_incomingCallId == null) return;
-
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CallScreen(
-          api: widget.api,
-          callId: _incomingCallId!,
-          chatId: '',
-          callerName: _incomingCallerName ?? 'Unknown',
-          callType: _incomingCallType ?? 'video',
-          isIncoming: true,
-        ),
-      ),
-    );
-
-    setState(() {
-      _hasIncomingCall = false;
-    });
-  }
-
-  void _rejectCall() async {
-    if (_incomingCallId != null) {
-      await widget.api.rejectCall(_incomingCallId!);
-    }
-    setState(() {
-      _hasIncomingCall = false;
-      _incomingCallId = null;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_hasIncomingCall && _incomingCallId != null && !_isShowingCallDialog) {
-      _isShowingCallDialog = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Incoming call'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  child: Text(
-                    (_incomingCallerName ?? 'U')[0].toUpperCase(),
-                    style: const TextStyle(fontSize: 24),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(_incomingCallerName ?? 'Unknown'),
-                Text(
-                  _incomingCallType == 'video' ? 'Video call' : 'Audio call',
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  _isShowingCallDialog = false;
-                  _rejectCall();
-                },
-                child: const Text('Decline'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  _isShowingCallDialog = false;
-                  _acceptCall();
-                },
-                child: const Text('Accept'),
-              ),
-            ],
-          ),
-        ).whenComplete(() => _isShowingCallDialog = false);
-      });
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Calls'),
-      ),
-      body: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.call, size: 64, color: Colors.grey),
-            SizedBox(height: 16),
-            Text(
-              'No recent calls',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Start a call from a chat',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class ProfileTab extends StatelessWidget {
   final ApiService api;

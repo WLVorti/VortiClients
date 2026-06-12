@@ -317,7 +317,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
   Widget _buildAvatar(String? avatarUrl, String fallbackChar, {String? userId}) {
     final fallbackColor = userId != null ? colorFromId(userId) : Theme.of(context).colorScheme.primary;
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
-      final fullUrl = 'http://77.34.76.27:3000$avatarUrl';
+      final fullUrl = 'https://wlvorti.ru:3000$avatarUrl';
       print('[Avatar] Loading image: $fullUrl');
       return SizedBox(
         width: 40,
