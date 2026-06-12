@@ -71,6 +71,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final Set<String> _onlineUsers = {};
   final Set<String> _pendingMessageIds = {};
   final Map<String, Timer> _pendingMessageTimers = {};
+  final List<String> _pendingQueue = [];
   Timer? _draftDebounce;
   Timer? _readDebounce;
   final Set<String> _pendingReadIds = {};
@@ -295,17 +296,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final type = msg['type'];
 
     if (type == 'message' && msg['chatId'] == widget.chatId) {
-      // Cancel pending timer FIRST, before any state mutation,
-      // to ensure the 5s "Failed to send" error never fires for a delivered message
-      if (msg['userId'] == _currentUserId) {
-        final confirmedTempId = msg['tempId'] as String?;
-        ApiService.addLog('_handleMessage: confirmed msgId=${msg['id']} tempId=$confirmedTempId');
-        if (confirmedTempId != null) {
-          _pendingMessageTimers[confirmedTempId]?.cancel();
-          _pendingMessageTimers.remove(confirmedTempId);
-          _pendingMessageIds.remove(confirmedTempId);
-        }
-      }
+      if (_messages.any((m) => m.id == msg['id'])) return;
 
       final replyData = msg['reply'] as Map<String, dynamic>?;
 
@@ -319,8 +310,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         'created_at': msg['timestamp'],
       });
 
-      if (_messages.any((m) => m.id == message.id)) {
-        return;
+      // Replace optimistic message for current user echoes
+      if (message.userId == _currentUserId && _pendingQueue.isNotEmpty) {
+        final tempId = _pendingQueue.removeAt(0);
+        _pendingMessageTimers[tempId]?.cancel();
+        _pendingMessageTimers.remove(tempId);
+        _pendingMessageIds.remove(tempId);
+        ApiService.addLog('_handleMessage: confirmed msgId=${msg['id']} tempId=$tempId');
+
+        final tempIndex = _messages.indexWhere((m) => m.id == tempId);
+        if (tempIndex != -1 && mounted) {
+          setState(() {
+            _messages[tempIndex] = message;
+          });
+          _scrollToBottom(force: true);
+          return;
+        }
       }
 
       if (message.userId != _currentUserId) {
@@ -335,8 +340,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _messages.add(message);
         });
       }
-
-      _scrollToBottom(force: message.userId == _currentUserId);
     }
 
     if (type == 'error') {
@@ -618,6 +621,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final pendingId = DateTime.now().millisecondsSinceEpoch.toString();
 
     _pendingMessageIds.add(pendingId);
+    _pendingQueue.add(pendingId);
+
+    // Add optimistic message immediately
+    final tempMsg = Message(
+      id: pendingId,
+      chatId: widget.chatId,
+      userId: _currentUserId,
+      text: text,
+      replyTo: replyTo,
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+      status: MessageStatus.sending,
+    );
+    setState(() {
+      _messages.add(tempMsg);
+    });
+    _scrollToBottom(force: true);
 
     widget.api.sendMessage(widget.chatId, text, replyTo: replyTo, tempId: pendingId);
 
@@ -631,6 +650,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       _pendingMessageTimers.remove(pendingId);
       
+      // Remove from queue
+      _pendingQueue.remove(pendingId);
+      
+      // Remove optimistic message from UI
+      if (mounted) {
+        setState(() {
+          _messages.removeWhere((m) => m.id == pendingId);
+        });
+      }
+
       final wasPending = _pendingMessageIds.remove(pendingId);
       ApiService.addLog('_sendMessage: timer fired chatId=${widget.chatId} pendingId=$pendingId wasPending=$wasPending');
       if (!wasPending) return;
@@ -1834,6 +1863,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Widget _buildStatusIcon(MessageStatus status) {
     switch (status) {
+      case MessageStatus.sending:
+        return SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Theme.of(context).colorScheme.outline,
+          ),
+        );
       case MessageStatus.read:
         return Icon(Icons.done_all, size: 14, color: Colors.blue[200]);
       case MessageStatus.delivered:

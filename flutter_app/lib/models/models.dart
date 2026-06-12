@@ -159,7 +159,7 @@ class Chat {
   }
 }
 
-enum MessageStatus { sent, delivered, read }
+enum MessageStatus { sending, sent, delivered, read }
 
 class Message {
   final String id;
