@@ -402,6 +402,10 @@ class ThemeProvider extends ChangeNotifier {
       surfaceContainer: colors.surface,
       surfaceContainerHigh: colors.surface,
       surfaceContainerHighest: colors.surface,
+      primaryContainer: isDark
+          ? colors.primary.withValues(alpha: 0.3)
+          : colors.primary.withValues(alpha: 0.12),
+      onPrimaryContainer: colors.text,
     );
     return ThemeData(
       useMaterial3: true,
