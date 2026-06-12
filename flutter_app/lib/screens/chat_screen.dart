@@ -1313,10 +1313,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildMessage(Message msg) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final myBubble = isDark
+        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.35)
+        : Theme.of(context).colorScheme.primary.withValues(alpha: 0.10);
     if (msg.isDeleted || msg.text == '[deleted]') {
       final isMe = msg.userId == _currentUserId;
       final bubbleColor = isMe
-          ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5)
+          ? myBubble
           : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
       final textColor = Theme.of(context).colorScheme.onSurfaceVariant;
       return Padding(
@@ -1402,7 +1406,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: isMe
-                              ? Theme.of(context).colorScheme.primaryContainer
+                              ? myBubble
                               : Theme.of(
                                   context,
                                 ).colorScheme.surfaceContainerHigh,
@@ -1573,7 +1577,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
                 decoration: BoxDecoration(
                   color: isMe
-                      ? Theme.of(context).colorScheme.primaryContainer
+                      ? myBubble
                       : Theme.of(context).colorScheme.surfaceContainerHigh,
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(16),
@@ -1654,7 +1658,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
               decoration: BoxDecoration(
                 color: isMe
-                    ? Colors.blue
+                    ? myBubble
                     : Theme.of(context).colorScheme.surfaceContainerHigh,
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
