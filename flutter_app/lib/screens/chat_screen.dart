@@ -1402,7 +1402,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: isMe
-                              ? Colors.blue
+                              ? Theme.of(context).colorScheme.primaryContainer
                               : Theme.of(
                                   context,
                                 ).colorScheme.surfaceContainerHigh,
@@ -1415,7 +1415,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               Icons.broken_image,
                               size: 20,
                               color: isMe
-                                  ? Colors.white70
+                                  ? Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
                                   : Theme.of(
                                       context,
                                     ).colorScheme.onSurfaceVariant,
@@ -1426,7 +1426,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                 fileName,
                                 style: TextStyle(
                                   color: isMe
-                                      ? Colors.white
+                                      ? Theme.of(context).colorScheme.onPrimaryContainer
                                       : Theme.of(context).colorScheme.onSurface,
                                 ),
                                 overflow: TextOverflow.ellipsis,
@@ -1573,7 +1573,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
                 decoration: BoxDecoration(
                   color: isMe
-                      ? Colors.blue
+                      ? Theme.of(context).colorScheme.primaryContainer
                       : Theme.of(context).colorScheme.surfaceContainerHigh,
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(16),
@@ -1607,21 +1607,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                 fontSize: 10,
                                 fontStyle: FontStyle.italic,
                                 color: isMe
-                                    ? Colors.white70
+                                    ? Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
                                     : Theme.of(
                                         context,
                                       ).colorScheme.onSurfaceVariant,
                               ),
                             ),
-                          Text(
-                            _formatTime(msg.createdAt),
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: isMe
-                                  ? Colors.white70
-                                  : Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
+                            Text(
+                              _formatTime(msg.createdAt),
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: isMe
+                                    ? Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
+                                    : Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                           if (isMe) ...[
@@ -1675,7 +1675,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         border: Border(
                           left: BorderSide(
                             color: isMe
-                                ? Colors.white70
+                                ? Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
                                 : Theme.of(context).colorScheme.primary,
                             width: 2,
                           ),
@@ -1689,7 +1689,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           fontSize: 10,
                           fontStyle: FontStyle.italic,
                           color: isMe
-                              ? Colors.white70
+                              ? Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
                               : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                         maxLines: 1,
@@ -1704,7 +1704,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           Icons.attach_file,
                           size: 20,
                           color: isMe
-                              ? Colors.white70
+                              ? Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
                               : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                         const SizedBox(width: 8),
@@ -1713,7 +1713,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             fileName,
                             style: TextStyle(
                               color: isMe
-                                  ? Colors.white
+                                  ? Theme.of(context).colorScheme.onPrimaryContainer
                                   : Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
@@ -1740,7 +1740,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           msg.text,
                           style: TextStyle(
                             color: isMe
-                                ? Colors.white
+                                ? Theme.of(context).colorScheme.onPrimaryContainer
                                 : Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
@@ -1759,7 +1759,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               fontSize: 10,
                               fontStyle: FontStyle.italic,
                               color: isMe
-                                  ? Colors.white70
+                                  ? Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
                                   : Theme.of(
                                       context,
                                     ).colorScheme.onSurfaceVariant,
@@ -1770,7 +1770,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           style: TextStyle(
                             fontSize: 10,
                             color: isMe
-                                ? Colors.white70
+                                ? Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
                                 : Theme.of(
                                     context,
                                   ).colorScheme.onSurfaceVariant,
@@ -2040,7 +2040,7 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
               icon: Icon(
                 _isPlaying ? Icons.pause : Icons.play_arrow,
                 color: widget.isMe
-                    ? Colors.white
+                    ? Theme.of(context).colorScheme.onPrimaryContainer
                     : Theme.of(context).colorScheme.onSurface,
               ),
               iconSize: 32,
@@ -2057,7 +2057,7 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
                       widget.fileName,
                       style: TextStyle(
                         color: widget.isMe
-                            ? Colors.white
+                            ? Theme.of(context).colorScheme.onPrimaryContainer
                             : Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w500,
                       ),
@@ -2076,13 +2076,13 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
                           overlayRadius: 12,
                         ),
                         activeTrackColor: widget.isMe
-                            ? Colors.white
+                            ? Theme.of(context).colorScheme.onPrimaryContainer
                             : Theme.of(context).colorScheme.primary,
                         inactiveTrackColor: widget.isMe
-                            ? Colors.white30
+                            ? Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.3)
                             : Theme.of(context).colorScheme.outline,
                         thumbColor: widget.isMe
-                            ? Colors.white
+                            ? Theme.of(context).colorScheme.onPrimaryContainer
                             : Theme.of(context).colorScheme.primary,
                       ),
                       child: Slider(
@@ -2110,7 +2110,7 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
                           style: TextStyle(
                             fontSize: 10,
                             color: widget.isMe
-                                ? Colors.white70
+                                ? Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
                                 : Theme.of(
                                     context,
                                   ).colorScheme.onSurfaceVariant,
@@ -2121,7 +2121,7 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
                           style: TextStyle(
                             fontSize: 10,
                             color: widget.isMe
-                                ? Colors.white70
+                                ? Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
                                 : Theme.of(
                                     context,
                                   ).colorScheme.onSurfaceVariant,
