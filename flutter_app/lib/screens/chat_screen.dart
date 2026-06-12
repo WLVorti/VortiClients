@@ -85,6 +85,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final Map<String, String> _participantNames = {};
   final Map<String, AudioPlayer> _audioPlayers = {};
   bool _isMuted = false;
+  File? _pendingFile;
+  String? _pendingFileName;
+  String? _pendingFileMimeType;
 
   @override
   void initState() {
@@ -603,14 +606,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return pos.pixels <= 100;
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     if (_isEditing) {
       _saveEdit();
       return;
     }
 
     final text = _messageController.text.trim();
-    if (text.isEmpty && _replyToMessageId == null) return;
+    final hasPendingFile = _pendingFile != null;
+    if (text.isEmpty && !hasPendingFile) return;
 
     if (text.length > _maxMessageLength) {
       _showSnackBar('Сообщение слишком длинное (макс. $_maxMessageLength символов)');
@@ -618,6 +622,42 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
 
     final replyTo = _replyToMessageId;
+
+    // Upload and send pending file first
+    if (hasPendingFile) {
+      setState(() => _isUploading = true);
+      try {
+        final fileSize = await _pendingFile!.length();
+        if (fileSize > 10 * 1024 * 1024) {
+          _showSnackBar('File too large (max 10MB)');
+          setState(() => _isUploading = false);
+          return;
+        }
+        final uploadResult = await widget.api.uploadFile(_pendingFile!);
+        if (uploadResult != null) {
+          widget.api.sendFile(
+            widget.chatId,
+            uploadResult['fileId']!,
+            replyTo: replyTo,
+            mimeType: uploadResult['mimeType'],
+          );
+        } else {
+          _showSnackBar('Upload failed');
+          setState(() => _isUploading = false);
+          return;
+        }
+      } catch (e) {
+        _showSnackBar('Upload failed');
+        setState(() => _isUploading = false);
+        return;
+      }
+      setState(() => _isUploading = false);
+      _cancelPendingFile();
+
+      // If no text to send separately, done
+      if (text.isEmpty) return;
+    }
+
     final pendingId = DateTime.now().millisecondsSinceEpoch.toString();
 
     _pendingMessageIds.add(pendingId);
@@ -831,7 +871,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (await _requestGalleryPermission() == false) return;
       final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
       if (picked != null) {
-        await _uploadFile(File(picked.path));
+        final file = File(picked.path);
+        final ext = picked.path.split('.').last.toLowerCase();
+        setState(() {
+          _pendingFile = file;
+          _pendingFileName = picked.name;
+          _pendingFileMimeType = 'image/$ext';
+        });
       }
     } catch (e) {
       _showSnackBar('Error picking from gallery');
@@ -847,7 +893,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
       final picked = await ImagePicker().pickImage(source: ImageSource.camera);
       if (picked != null) {
-        await _uploadFile(File(picked.path));
+        final file = File(picked.path);
+        final ext = picked.path.split('.').last.toLowerCase();
+        setState(() {
+          _pendingFile = file;
+          _pendingFileName = picked.name;
+          _pendingFileMimeType = 'image/$ext';
+        });
       }
     } catch (e) {
       _showSnackBar('Error taking photo');
@@ -877,10 +929,28 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         allowMultiple: false,
       );
       if (result != null && result.files.single.path != null) {
-        await _uploadFile(File(result.files.single.path!));
+        final file = File(result.files.single.path!);
+        final ext = result.files.single.path!.split('.').last.toLowerCase();
+        final mimeType = _getPreviewMimeType(ext);
+        setState(() {
+          _pendingFile = file;
+          _pendingFileName = result.files.single.name;
+          _pendingFileMimeType = mimeType;
+        });
       }
     } catch (e) {
       _showSnackBar('Error selecting file');
+    }
+  }
+
+  String _getPreviewMimeType(String ext) {
+    switch (ext) {
+      case 'jpg': case 'jpeg': return 'image/jpeg';
+      case 'png': return 'image/png';
+      case 'gif': return 'image/gif';
+      case 'webp': return 'image/webp';
+      case 'mp4': case 'mov': case 'avi': case 'mkv': return 'video/$ext';
+      default: return 'application/octet-stream';
     }
   }
 
@@ -911,6 +981,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       setState(() => _isUploading = false);
       _showSnackBar('Upload failed');
     }
+  }
+
+  void _cancelPendingFile() {
+    setState(() {
+      _pendingFile = null;
+      _pendingFileName = null;
+      _pendingFileMimeType = null;
+    });
   }
 
   void _showSnackBar(String message) {
@@ -1213,6 +1291,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   ],
                 ),
               ),
+            if (_pendingFile != null && !_isEditing)
+              _buildPendingFilePreview(),
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -1859,6 +1939,61 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Widget _VideoPlayer({required String videoUrl}) {
     return _SafeVideoPlayer(videoUrl: videoUrl);
+  }
+
+  Widget _buildPendingFilePreview() {
+    final isImage = _pendingFileMimeType?.startsWith('image/') ?? false;
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: isImage && _pendingFile != null
+                  ? Image.file(_pendingFile!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fileIcon())
+                  : _fileIcon(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _pendingFileName ?? 'File',
+              style: const TextStyle(fontSize: 13),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (_isUploading)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              onPressed: _cancelPendingFile,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _fileIcon() {
+    final isVideo = _pendingFileMimeType?.startsWith('video/') ?? false;
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+      child: Icon(
+        isVideo ? Icons.videocam : Icons.insert_drive_file,
+        size: 28,
+      ),
+    );
   }
 
   Widget _buildStatusIcon(MessageStatus status) {
