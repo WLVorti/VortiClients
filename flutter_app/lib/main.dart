@@ -5,9 +5,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'services/api_service.dart';
 import 'services/theme_provider.dart';
+import 'services/locale_provider.dart';
 import 'services/notification_service.dart';
 import 'services/mute_service.dart';
 import 'services/message_cache.dart';
+import 'l10n/app_localizations.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
@@ -64,6 +66,9 @@ class _VortiAppState extends State<VortiApp> {
       ApiService.addLog('_checkAuth: loading theme...');
       await ThemeProvider().loadTheme();
       ApiService.addLog('_checkAuth: theme loaded');
+      ApiService.addLog('_checkAuth: loading locale...');
+      await LocaleProvider().loadLocale();
+      ApiService.addLog('_checkAuth: locale loaded');
       ApiService.addLog('_checkAuth: initializing MuteService...');
       await MuteService.init();
       ApiService.addLog('_checkAuth: MuteService done');
@@ -154,11 +159,14 @@ class _VortiAppState extends State<VortiApp> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: ThemeProvider(),
+      listenable: Listenable.merge([ThemeProvider(), LocaleProvider()]),
       builder: (context, _) {
         return MaterialApp(
           title: 'Vorti Messenger',
           debugShowCheckedModeBanner: false,
+          locale: LocaleProvider().locale,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
           themeMode: ThemeProvider().themeMode,
           theme: ThemeProvider().getThemeData(),
           darkTheme: ThemeProvider().getThemeData(),

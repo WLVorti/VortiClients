@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.8
   
   # Networking
@@ -28,7 +30,7 @@ dependencies:
   
   # Utils
   uuid: ^4.2.0
-  intl: ^0.19.0
+  intl: ^0.20.2
   
   # UI
   flutter_secure_storage: ^9.0.0

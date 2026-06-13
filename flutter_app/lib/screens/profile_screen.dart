@@ -9,6 +9,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../utils/avatar_utils.dart';
 import '../services/theme_provider.dart';
+import '../services/locale_provider.dart';
+import '../l10n/app_localizations.dart';
 import '../widgets/falling_icons_background.dart';
 import '../models/models.dart';
 import '../models/account.dart';
@@ -439,6 +441,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      child: const Icon(Icons.language, color: Colors.white, size: 20),
+                    ),
+                    title: Text(AppLocalizations.of(context).language),
+                    subtitle: Text(
+                      AppLocalizations.of(context).localeName(
+                        LocaleProvider().locale.languageCode,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _showLanguagePicker(),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 Builder(
                   builder: (context) {
                     final theme = Theme.of(context);
@@ -545,7 +569,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-  
+
+  void _showLanguagePicker() {
+    final current = LocaleProvider().locale.languageCode;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Text(
+                  AppLocalizations.of(context).appLanguage,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.check_circle, size: 20),
+                title: const Text('English'),
+                trailing: current == 'en'
+                    ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                    : null,
+                onTap: () {
+                  LocaleProvider().setLocale(const Locale('en'));
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.check_circle, size: 20),
+                title: const Text('Русский'),
+                trailing: current == 'ru'
+                    ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                    : null,
+                onTap: () {
+                  LocaleProvider().setLocale(const Locale('ru'));
+                  Navigator.pop(context);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildColorRow(String label, Color color, String key) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
