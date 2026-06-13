@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../models/models.dart';
 import '../utils/avatar_utils.dart';
+import '../l10n/app_localizations.dart';
 
 class GroupInfoScreen extends StatefulWidget {
   final ApiService api;
@@ -64,7 +65,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_chatInfo?['name'] ?? 'Group'),
+        title: Text(_chatInfo?['name'] ?? AppLocalizations.of(context).group),
         actions: [
           if (_isAdmin)
             PopupMenuButton<String>(
@@ -76,14 +77,14 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 }
               },
               itemBuilder: (context) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'rename',
-                  child: Text('Rename'),
+                  child: Text(AppLocalizations.of(context).rename),
                 ),
                 if (_currentUserRole == 'owner')
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'delete',
-                    child: Text('Delete group'),
+                    child: Text(AppLocalizations.of(context).deleteGroup),
                   ),
               ],
             ),
@@ -141,12 +142,12 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            _chatInfo?['name'] ?? 'Group',
+            _chatInfo?['name'] ?? AppLocalizations.of(context).group,
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
-            '${_participants.length} members',
+            AppLocalizations.of(context).membersCount(_participants.length),
             style: TextStyle(color: Colors.grey[600]),
           ),
           if (_currentUserRole != null) ...[
@@ -174,8 +175,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Members',
+              Text(
+                AppLocalizations.of(context).members,
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               if (_isAdmin)
@@ -194,7 +195,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             final participant = _participants[index];
             final userId = participant['user_id'];
             final role = participant['role'];
-            final username = participant['username'] ?? 'Unknown';
+            final username = participant['username'] ?? AppLocalizations.of(context).unknown;
 
             return ListTile(
               leading: CircleAvatar(
@@ -214,11 +215,11 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                           final confirm = await showDialog<bool>(
                             context: context,
                             builder: (ctx) => AlertDialog(
-                              title: const Text('Transfer ownership?'),
-                              content: Text('Make $username the new owner? You will become a regular member.'),
+                              title: Text(AppLocalizations.of(context).transferOwnershipConfirm),
+                              content: Text(AppLocalizations.of(context).transferOwnershipBody),
                               actions: [
-                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Transfer')),
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLocalizations.of(context).cancel)),
+                                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(AppLocalizations.of(context).transferOwnership)),
                               ],
                             ),
                           );
@@ -231,23 +232,23 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                       itemBuilder: (_) => [
                         if (_currentUserRole == 'owner') ...[
                           if (role != 'admin')
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: 'admin',
-                              child: Text('Make admin'),
+                              child: Text(AppLocalizations.of(context).makeAdmin),
                             ),
                           if (role == 'admin')
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: 'member',
-                              child: Text('Remove admin'),
+                              child: Text(AppLocalizations.of(context).removeAdmin),
                             ),
-                          const PopupMenuItem(
+                          PopupMenuItem(
                             value: 'transfer',
-                            child: Text('Transfer ownership'),
+                            child: Text(AppLocalizations.of(context).transferOwnership),
                           ),
                         ],
-                        const PopupMenuItem(
+                        PopupMenuItem(
                           value: 'remove',
-                          child: Text('Remove'),
+                          child: Text(AppLocalizations.of(context).remove),
                         ),
                       ],
                     )
@@ -258,7 +259,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         const Divider(),
         ListTile(
           leading: const Icon(Icons.exit_to_app, color: Colors.red),
-          title: const Text('Leave group', style: TextStyle(color: Colors.red)),
+          title: Text(AppLocalizations.of(context).leaveGroup, style: TextStyle(color: Colors.red)),
           onTap: _leaveGroup,
         ),
       ],
@@ -270,17 +271,17 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Rename group'),
+        title: Text(AppLocalizations.of(context).renameGroup),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
-            hintText: 'Group name',
+          decoration: InputDecoration(
+            hintText: AppLocalizations.of(context).groupName,
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).cancel),
           ),
           FilledButton(
             onPressed: () async {
@@ -290,7 +291,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 _loadData();
               }
             },
-            child: const Text('Save'),
+            child: Text(AppLocalizations.of(context).save),
           ),
         ],
       ),
@@ -301,12 +302,12 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete group'),
-        content: const Text('Are you sure you want to delete this group? This action cannot be undone.'),
+        title: Text(AppLocalizations.of(context).deleteGroup),
+        content: Text(AppLocalizations.of(context).deleteGroupConfirm),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).cancel),
           ),
           FilledButton(
             onPressed: () async {
@@ -325,7 +326,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 }
               }
             },
-            child: const Text('Delete'),
+            child: Text(AppLocalizations.of(context).delete),
           ),
         ],
       ),
@@ -341,13 +342,13 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library),
-              title: const Text('Choose from gallery'),
+              title: Text(AppLocalizations.of(context).chooseFromGallery),
               onTap: () => Navigator.pop(ctx, 'gallery'),
             ),
             if (_chatInfo?['avatarUrl'] != null)
               ListTile(
                 leading: const Icon(Icons.delete),
-                title: const Text('Remove photo'),
+                title: Text(AppLocalizations.of(context).removePhoto),
                 onTap: () => Navigator.pop(ctx, 'remove'),
               ),
           ],
@@ -401,7 +402,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                       final b = await controller.crop();
                       if (b != null) Navigator.pop(context, b);
                     },
-                    child: const Text('Save'),
+                    child: Text(AppLocalizations.of(context).save),
                   ),
                 ],
               ),
@@ -444,15 +445,15 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Add participant',
+              Text(
+                AppLocalizations.of(context).addParticipant,
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: searchController,
-                decoration: const InputDecoration(
-                  hintText: 'Search users...',
+                decoration: InputDecoration(
+                  hintText: AppLocalizations.of(context).searchUsers,
                   border: OutlineInputBorder(),
                 ),
                 onChanged: (value) async {
@@ -500,15 +501,15 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Remove participant?'),
+        title: Text(AppLocalizations.of(context).removeParticipant),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove'),
+            child: Text(AppLocalizations.of(context).remove),
           ),
         ],
       ),
@@ -529,15 +530,15 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Leave group?'),
+        title: Text(AppLocalizations.of(context).leaveGroupConfirm),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Leave'),
+            child: Text(AppLocalizations.of(context).leave),
           ),
         ],
       ),

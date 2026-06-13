@@ -291,15 +291,15 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'New Chat',
+              Text(
+                AppLocalizations.of(context).newChat,
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: searchController,
-                decoration: const InputDecoration(
-                  hintText: 'Search users...',
+                decoration: InputDecoration(
+                  hintText: AppLocalizations.of(context).searchUsers,
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.search),
                 ),
@@ -357,12 +357,12 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                     ),
                     title: Text(users[i].username),
                     subtitle: _onlineUsers.contains(users[i].id)
-                        ? const Text(
-                            'Online',
+                        ? Text(
+                            AppLocalizations.of(context).online,
                             style: TextStyle(color: Colors.green),
                           )
-                        : const Text(
-                            'Offline',
+                        : Text(
+                            AppLocalizations.of(context).offline,
                             style: TextStyle(color: Colors.grey),
                           ),
                     onTap: () async {
@@ -431,7 +431,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search messages...',
+                hintText: AppLocalizations.of(context).searchMessages,
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24),
@@ -462,7 +462,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                 ? const Center(child: CircularProgressIndicator())
                 : _isSearching && _searchController.text.trim().isNotEmpty
                     ? _searchResults.isEmpty
-                        ? const Center(child: Text('No messages found'))
+                        ? Center(child: Text(AppLocalizations.of(context).noMessagesFound))
                         : RefreshIndicator(
                             onRefresh: () async => _onSearchChanged(_searchController.text),
                             child: ListView.builder(
@@ -509,7 +509,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                             ),
                           )
                     : _chats.isEmpty
-                        ? const Center(child: Text('No chats yet'))
+                        ? Center(child: Text(AppLocalizations.of(context).noChatsYet))
                         : RefreshIndicator(
                             onRefresh: _loadData,
                             child: ListView.builder(
@@ -564,7 +564,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                                       ],
                                     ),
                                   ),
-                                  title: Text(chat.name ?? 'Chat'),
+                                  title: Text(chat.name ?? AppLocalizations.of(context).chat),
                                   subtitle: Text(
                                     chat.lastMessage ?? '',
                                     maxLines: 1,
@@ -605,7 +605,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                                   ),
                                   onTap: () => _openChat(
                                     chat.id,
-                                    chat.name ?? 'Chat',
+                                    chat.name ?? AppLocalizations.of(context).chat,
                                     avatarUrl: chat.avatarUrl,
                                     otherUserId: otherUserId,
                                     initialOnline: chat.isOnline || _onlineUsers.contains(otherUserId),
@@ -799,7 +799,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search messages...',
+                hintText: AppLocalizations.of(context).searchMessages,
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24),
@@ -830,7 +830,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                 ? const Center(child: CircularProgressIndicator())
                 : _isSearching && _searchController.text.trim().isNotEmpty
                     ? _searchResults.isEmpty
-                        ? const Center(child: Text('No messages found'))
+                        ? Center(child: Text(AppLocalizations.of(context).noMessagesFound))
                         : RefreshIndicator(
                             onRefresh: () async => _onSearchChanged(_searchController.text),
                             child: ListView.builder(
@@ -877,7 +877,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                             ),
                           )
                     : _groups.isEmpty
-                        ? const Center(child: Text('No communities yet'))
+                        ? Center(child: Text(AppLocalizations.of(context).noCommunitiesYet))
                         : RefreshIndicator(
                             onRefresh: _loadGroups,
                             child: ListView.builder(
@@ -892,7 +892,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                                     userId: group.id,
                                   ),
                                   title: Text(
-                                    group.name ?? 'Group',
+                                    group.name ?? AppLocalizations.of(context).group,
                                     style: TextStyle(
                                       color: Theme.of(context).colorScheme.primary,
                                       fontWeight: FontWeight.w600,
@@ -938,7 +938,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                                         builder: (_) => ChatScreen(
                                           api: widget.api,
                                           chatId: group.id,
-                                          chatName: group.name ?? 'Group',
+                                          chatName: group.name ?? AppLocalizations.of(context).group,
                                           avatarUrl: group.avatarUrl,
                                           chatType: 'group',
                                         ),
@@ -980,15 +980,15 @@ builder: (ctx, setSheetState) => Padding(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'New Community',
+                Text(
+                  AppLocalizations.of(context).newCommunity,
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(
-                    hintText: 'Community name...',
+                  decoration: InputDecoration(
+                    hintText: AppLocalizations.of(context).communityName,
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.group),
                   ),
@@ -996,8 +996,8 @@ builder: (ctx, setSheetState) => Padding(
                 const SizedBox(height: 16),
                 TextField(
                   controller: searchController,
-                  decoration: const InputDecoration(
-                    hintText: 'Add members...',
+                  decoration: InputDecoration(
+                    hintText: AppLocalizations.of(context).addMembersHint,
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.search),
                   ),
@@ -1019,7 +1019,7 @@ builder: (ctx, setSheetState) => Padding(
                   Wrap(
                     spacing: 8,
                     children: selectedUsers.map((id) {
-                      final user = users.firstWhere((u) => u.id == id, orElse: () => User(id: id, username: 'User', createdAt: 0));
+                      final user = users.firstWhere((u) => u.id == id, orElse: () => User(id: id, username: AppLocalizations.of(context).user, createdAt: 0));
                       return Chip(
                         label: Text(user.username),
                         onDeleted: () {
@@ -1073,7 +1073,7 @@ builder: (ctx, setSheetState) => Padding(
                               _loadGroups();
                             }
                           },
-                    child: const Text('Create Community'),
+                    child: Text(AppLocalizations.of(context).createCommunity),
                   ),
                 ),
                 const SizedBox(height: 16),

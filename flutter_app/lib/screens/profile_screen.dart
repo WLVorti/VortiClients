@@ -200,7 +200,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         if (context.mounted) Navigator.pop(context);
                       }
                     },
-                    child: const Text('Save'),
+                    child: Text(AppLocalizations.of(context).save),
                   ),
                 ],
               ),
@@ -275,7 +275,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: const Icon(Icons.switch_account),
             ),
             onPressed: _showAccountsBottomSheet,
-            tooltip: 'Switch account',
+            tooltip: AppLocalizations.of(context).switchAccount,
           ),
           IconButton(
             icon: _isSaving
@@ -383,7 +383,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     return TextField(
                       controller: _displayNameController,
                       decoration: InputDecoration(
-                        labelText: 'Display name',
+                        labelText: AppLocalizations.of(context).displayName,
                         labelStyle: theme.textTheme.bodyMedium?.copyWith(
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -400,7 +400,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       controller: _bioController,
                       maxLines: 3,
                       decoration: InputDecoration(
-                        labelText: 'Bio',
+                        labelText: AppLocalizations.of(context).bio,
                         labelStyle: theme.textTheme.bodyMedium?.copyWith(
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -420,10 +420,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       backgroundColor: Theme.of(context).colorScheme.primary,
                       child: const Icon(Icons.palette, color: Colors.white, size: 20),
                     ),
-                    title: const Text('Theme'),
+                    title: Text(AppLocalizations.of(context).theme),
                     subtitle: Text(
                       _themeProvider.themeId == 'custom'
-                          ? 'Custom'
+                          ? AppLocalizations.of(context).custom
                           : _themeProvider.themeId,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -482,7 +482,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Joined: ${_formatDate(_profile?.createdAt ?? 0)}',
+                              '${AppLocalizations.of(context).joined}: ${_formatDate(_profile?.createdAt ?? 0)}',
                               style: theme.textTheme.bodySmall,
                             ),
                           ),
@@ -499,9 +499,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Icons.bug_report,
                       color: Theme.of(context).colorScheme.primary,
                     ),
-                    title: const Text('Copy debug logs'),
+                    title: Text(AppLocalizations.of(context).copyDebugLogs),
                     subtitle: Text(
-                      '${ApiService.logs.length} entries',
+                      '${ApiService.logs.length} ${AppLocalizations.of(context).entries}',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     onTap: () {
@@ -509,8 +509,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ClipboardData(text: ApiService.getLogs()),
                       );
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Logs copied to clipboard'),
+                        SnackBar(
+                          content: Text(AppLocalizations.of(context).logsCopied),
                           duration: Duration(seconds: 3),
                         ),
                       );
@@ -526,24 +526,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       color: Colors.red,
                     ),
                     title: Text(
-                      'Log out',
+                      AppLocalizations.of(context).logout,
                       style: TextStyle(color: Colors.red),
                     ),
                     onTap: () async {
                       final confirmed = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
-                          title: const Text('Log out'),
-                          content: const Text('Are you sure you want to log out?'),
+                          title: Text(AppLocalizations.of(context).logout),
+                          content: Text(AppLocalizations.of(context).logOutConfirm),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancel'),
+                              child: Text(AppLocalizations.of(context).cancel),
                             ),
                             TextButton(
                               onPressed: () => Navigator.pop(context, true),
                               style: TextButton.styleFrom(foregroundColor: Colors.red),
-                              child: const Text('Log out'),
+                              child: Text(AppLocalizations.of(context).logout),
                             ),
                           ],
                         ),
@@ -691,9 +691,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   String _formatDate(int timestamp) {
-    if (timestamp == 0) return 'Unknown';
-    final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    return '${date.day}/${date.month}/${date.year}';
+    return AppLocalizations.of(context).formatDate(timestamp);
   }
 }
 
@@ -1010,7 +1008,7 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
+import '../l10n/app_localizations.dart';
 import '../widgets/falling_icons_background.dart';
 import '../models/models.dart';
 import '../utils/avatar_utils.dart';
@@ -38,13 +39,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).account)),
       body: Stack(fit: StackFit.expand, children: [
         const Positioned.fill(child: FallingIconsBackground(maxConcurrent: 120)),
         _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _profile == null
-                ? const Center(child: Text('User not found'))
+                ? Center(child: Text(AppLocalizations.of(context).userNotFound))
                 : SingleChildScrollView(
                   child: Center(
                     child: Padding(
@@ -111,7 +112,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                           ],
                           const SizedBox(height: 32),
                           Text(
-                            'Joined ${_formatDate(_profile!.createdAt)}',
+                            '${AppLocalizations.of(context).joined} ${AppLocalizations.of(context).formatDate(_profile!.createdAt)}',
                             style: TextStyle(
                               fontSize: 12,
                               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -127,22 +128,4 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  String _formatDate(int timestamp) {
-    final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    final months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${months[date.month - 1]} ${date.day}, ${date.year}';
-  }
 }

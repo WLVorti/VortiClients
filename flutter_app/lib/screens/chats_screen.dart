@@ -8,6 +8,7 @@ import '../utils/avatar_utils.dart';
 import 'chat_screen.dart';
 import 'auth_screen.dart';
 import 'profile_screen.dart';
+import '../l10n/app_localizations.dart';
 
 class ChatsScreen extends StatefulWidget {
   final ApiService api;
@@ -163,7 +164,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 child: Row(
                   children: [
                     Text(
-                      'Новый чат',
+                      AppLocalizations.of(context).newChat,
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -182,7 +183,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 child: TextField(
                   controller: searchController,
                   decoration: InputDecoration(
-                    hintText: 'Поиск пользователей...',
+                    hintText: AppLocalizations.of(context).searchUsers,
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: searchController.text.isNotEmpty
                         ? IconButton(
@@ -211,9 +212,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
               ),
               const SizedBox(height: 8),
               if (users.isEmpty && searchController.text.length >= 2)
-                const Padding(
-                  padding: EdgeInsets.all(40),
-                  child: Text('Пользователи не найдены',
+                Padding(
+                  padding: const EdgeInsets.all(40),
+                  child: Text(AppLocalizations.of(context).usersNotFound,
                     style: TextStyle(color: Colors.grey),
                   ),
                 )
@@ -252,7 +253,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         ),
                         title: Text(users[i].username, style: const TextStyle(fontWeight: FontWeight.w600)),
                         subtitle: Text(
-                          _onlineUsers.contains(users[i].id) ? 'Online' : 'Offline',
+                          _onlineUsers.contains(users[i].id) ? AppLocalizations.of(context).online : AppLocalizations.of(context).offline,
                           style: TextStyle(
                             color: _onlineUsers.contains(users[i].id) ? Colors.green : Colors.grey,
                             fontSize: 13,
@@ -303,12 +304,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
       // Extract filename - take everything after [file] or [File]
       final startIdx = lowerMessage.indexOf('[file]');
       final fileName = lastMessage.substring(startIdx + 6).trim(); // 6 = length of '[file]'
-      if (fileName.isEmpty) return 'File';
-      
+      if (fileName.isEmpty) return AppLocalizations.of(context).file;
+
       final ext = fileName.split('.').last.toLowerCase();
       final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(ext);
-      
-      return isImage ? 'Photo' : 'File';
+
+      return isImage ? AppLocalizations.of(context).photo : AppLocalizations.of(context).file;
     }
     
     return lastMessage;
@@ -347,7 +348,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chats'),
+        title: Text(AppLocalizations.of(context).chats),
         actions: [
           IconButton(
             icon: const Icon(Icons.person),
@@ -365,7 +366,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _chats.isEmpty
-          ? const Center(child: Text('No chats yet'))
+          ? Center(child: Text(AppLocalizations.of(context).noChatsYet))
           : RefreshIndicator(
               onRefresh: _loadData,
               child: ListView.builder(
@@ -383,7 +384,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                           chat.participants.first[0].toUpperCase(),
                       userId: chat.id,
                     ),
-                    title: Text(chat.name ?? 'Chat'),
+                    title: Text(chat.name ?? AppLocalizations.of(context).chat),
                     subtitle: Text(
                       _getLastMessageDisplay(chat.lastMessage),
                       maxLines: 1,
@@ -422,7 +423,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         ],
                       ],
                     ),
-                    onTap: () => _openChat(chat.id, chat.name ?? 'Chat'),
+                    onTap: () => _openChat(chat.id, chat.name ?? AppLocalizations.of(context).chat),
                   );
                 },
               ),

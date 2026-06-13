@@ -133,6 +133,65 @@ class AppLocalizations {
   String get camera => isRu ? 'Камера' : 'Camera';
   String get gallery => isRu ? 'Галерея' : 'Gallery';
   String get appLanguage => isRu ? 'Язык приложения' : 'App language';
+  String get searchMessages => isRu ? 'Поиск сообщений' : 'Search messages';
+  String get noChatsYet => isRu ? 'Нет чатов' : 'No chats yet';
+  String get noCommunitiesYet => isRu ? 'Нет сообществ' : 'No communities yet';
+  String get noMessagesFound => isRu ? 'Сообщения не найдены' : 'No messages found';
+  String get usersNotFound => isRu ? 'Пользователи не найдены' : 'Users not found';
+  String get photo => isRu ? 'Фото' : 'Photo';
+  String get file => isRu ? 'Файл' : 'File';
+  String get chat => isRu ? 'Чат' : 'Chat';
+  String get group => isRu ? 'Группа' : 'Group';
+  String get user => isRu ? 'Пользователь' : 'User';
+  String get unknown => isRu ? 'Неизвестно' : 'Unknown';
+  String get rename => isRu ? 'Переименовать' : 'Rename';
+  String get renameGroup => isRu ? 'Переименовать группу' : 'Rename group';
+  String get transferOwnership => isRu ? 'Передать владение' : 'Transfer ownership';
+  String get makeAdmin => isRu ? 'Сделать администратором' : 'Make admin';
+  String get removeAdmin => isRu ? 'Убрать администратора' : 'Remove admin';
+  String get leave => isRu ? 'Покинуть' : 'Leave';
+  String get remove => isRu ? 'Удалить' : 'Remove';
+  String get addParticipant => isRu ? 'Добавить участника' : 'Add participant';
+  String membersCount(int n) => isRu ? '$n участников' : '$n members';
+  String get newCommunity => isRu ? 'Новое сообщество' : 'New Community';
+  String get communityName => isRu ? 'Название сообщества...' : 'Community name...';
+  String get addMembersHint => isRu ? 'Добавить участников...' : 'Add members...';
+  String get createCommunity => isRu ? 'Создать сообщество' : 'Create Community';
+  String get deleteMessage => isRu ? 'Удалить сообщение?' : 'Delete message?';
+  String get deleteGroupConfirm => isRu ? 'Вы уверены, что хотите удалить эту группу?' : 'Are you sure you want to delete this group?';
+  String get leaveGroupConfirm => isRu ? 'Покинуть группу?' : 'Leave group?';
+  String get removeParticipant => isRu ? 'Удалить участника?' : 'Remove participant?';
+  String get transferOwnershipConfirm => isRu ? 'Передать владение?' : 'Transfer ownership?';
+  String get transferOwnershipBody => isRu ? 'Сделать нового владельца?' : 'Make the new owner?';
+  String get videoNotSupported => isRu ? 'Видео не поддерживается' : 'Video not supported';
+  String get deleteMessageConfirm => isRu ? 'Удалить сообщение?' : 'Delete message?';
+  String get microphonePermissionDenied => isRu ? 'Доступ к микрофону запрещён' : 'Microphone permission denied';
+  String get startRecordingHint => isRu ? 'Начать запись' : 'Start recording';
+  String get stopRecordingHint => isRu ? 'Остановить запись' : 'Stop recording';
+  String get voiceMessageFailed => isRu ? 'Не удалось отправить голосовое сообщение' : 'Failed to send voice message';
+  String get editedLabel => isRu ? 'ред.' : 'edited';
+  String get messageNotFound => isRu ? '[сообщение не найдено]' : '[message not found]';
+  String get monthsJan => isRu ? 'янв' : 'Jan';
+  String get monthsFeb => isRu ? 'фев' : 'Feb';
+  String get monthsMar => isRu ? 'мар' : 'Mar';
+  String get monthsApr => isRu ? 'апр' : 'Apr';
+  String get monthsMay => isRu ? 'мая' : 'May';
+  String get monthsJun => isRu ? 'июн' : 'Jun';
+  String get monthsJul => isRu ? 'июл' : 'Jul';
+  String get monthsAug => isRu ? 'авг' : 'Aug';
+  String get monthsSep => isRu ? 'сен' : 'Sep';
+  String get monthsOct => isRu ? 'окт' : 'Oct';
+  String get monthsNov => isRu ? 'ноя' : 'Nov';
+  String get monthsDec => isRu ? 'дек' : 'Dec';
+  String formatDate(int timestamp) {
+    if (timestamp == 0) return unknown;
+    final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    final months = [
+      monthsJan, monthsFeb, monthsMar, monthsApr, monthsMay, monthsJun,
+      monthsJul, monthsAug, monthsSep, monthsOct, monthsNov, monthsDec,
+    ];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
