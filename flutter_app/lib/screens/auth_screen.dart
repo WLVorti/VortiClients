@@ -392,6 +392,60 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
               ),
 
+              // Google sign-in
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    const Expanded(child: Divider()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'или',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    const Expanded(child: Divider()),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: _isLoading
+                      ? null
+                      : () async {
+                          setState(() {
+                            _isLoading = true;
+                            _error = null;
+                          });
+                          final result = await widget.api.signInWithGoogle();
+                          setState(() => _isLoading = false);
+                          if (result['status'] == 'success' || result['token'] != null) {
+                            if (widget.isAddingAccount) {
+                              if (mounted) Navigator.pop(context);
+                            } else {
+                              if (mounted) {
+                                Navigator.of(context).pushReplacement(
+                                  MaterialPageRoute(builder: (_) => HomeScreen(api: widget.api)),
+                                );
+                              }
+                            }
+                          } else {
+                            setState(() {
+                              final msg = result['message'] as String? ?? 'Ошибка';
+                              _error = msg;
+                            });
+                          }
+                        },
+                  icon: const Icon(Icons.g_mobiledata_rounded, size: 28),
+                  label: const Text('Google'),
+                ),
+              ),
               const SizedBox(height: 20),
 
               // Toggle login/register

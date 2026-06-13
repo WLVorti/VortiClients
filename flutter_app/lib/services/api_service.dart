@@ -6,6 +6,8 @@ import 'package:http_parser/http_parser.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide User;
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/models.dart';
 import '../models/account.dart';
 import 'theme_provider.dart';
@@ -424,6 +426,54 @@ class ApiService {
       return data;
     } catch (e) {
       ApiService.addLog('Login EXCEPTION: $e');
+      return {'status': 'error', 'message': '$e'};
+    }
+  }
+
+  Future<Map<String, dynamic>> signInWithGoogle() async {
+    ApiService.addLog('Google sign-in starting...');
+    try {
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        ApiService.addLog('Google sign-in cancelled by user');
+        return {'status': 'error', 'message': 'Sign in cancelled'};
+      }
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      final String? idToken = await userCredential.user?.getIdToken();
+
+      if (idToken == null) {
+        ApiService.addLog('Failed to get Firebase ID token');
+        return {'status': 'error', 'message': 'Failed to authenticate'};
+      }
+
+      ApiService.addLog('Sending Google token to server...');
+      final res = await _client.post(
+        Uri.parse('$baseUrl/auth/google'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'idToken': idToken}),
+      );
+
+      ApiService.addLog('Google auth response: ${res.statusCode}');
+      final data = jsonDecode(res.body);
+
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final username = data['username'] as String? ?? 'user';
+        await _saveAccountFromResponse(data, username);
+        ApiService.addLog('Google sign-in success: ${data['userId']}');
+        connectWebSocket();
+      } else {
+        ApiService.addLog('Google auth failed: ${data['message']}');
+      }
+      return data;
+    } catch (e) {
+      ApiService.addLog('Google sign-in EXCEPTION: $e');
       return {'status': 'error', 'message': '$e'};
     }
   }

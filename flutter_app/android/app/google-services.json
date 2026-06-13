@@ -12,7 +12,12 @@
           "package_name": "com.wlvorti.vorti_messenger"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "116660736245-rhk72if096bp8bnivhn7lr2d5o2j4q90.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCzQ_IG9cZ_BXvhvZycu46uGEDLIs2PKOg"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "116660736245-rhk72if096bp8bnivhn7lr2d5o2j4q90.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
