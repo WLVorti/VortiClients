@@ -263,7 +263,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: LayoutBuilder(
           builder: (context, constraints) => SizedBox(
             width: constraints.maxWidth,
-            child: const Text('Account', overflow: TextOverflow.ellipsis),
+            child: Text(AppLocalizations.of(context).account, overflow: TextOverflow.ellipsis),
           ),
         ),
         centerTitle: false,

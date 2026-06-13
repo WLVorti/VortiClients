@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/mute_service.dart';
 import '../services/theme_provider.dart';
+import '../l10n/app_localizations.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/models.dart';
 import '../utils/avatar_utils.dart';
@@ -53,23 +54,23 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: _onTabTapped,
-        destinations: const [
+        destinations: [
           NavigationDestination(
             icon: Icon(Icons.chat_bubble_outline),
             selectedIcon: Icon(Icons.chat_bubble),
-            label: 'Chats',
+            label: AppLocalizations.of(context).chats,
           ),
           NavigationDestination(
             icon: Icon(Icons.group_outlined),
             selectedIcon: Icon(Icons.group),
-            label: 'Communities',
+            label: AppLocalizations.of(context).communities,
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
-            label: 'Account',
-                        ),
-                      ],
+            label: AppLocalizations.of(context).account,
+          ),
+        ],
                     ),
     );
   }
@@ -419,7 +420,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chats'),
+        title: Text(AppLocalizations.of(context).chats),
         automaticallyImplyLeading: false,
         actions: [],
       ),
@@ -784,7 +785,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Communities'),
+        title: Text(AppLocalizations.of(context).communities),
         automaticallyImplyLeading: false,
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadGroups),
