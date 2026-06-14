@@ -1122,7 +1122,7 @@ class ApiService {
 
   // ==================== Profile ====================
 
-  Future<Profile?> updateProfile({String? displayName, String? bio}) async {
+  Future<Profile?> updateProfile({String? displayName, String? bio, String? username}) async {
     try {
       final res = await _requestWithRefresh(() => _client.put(
         Uri.parse('$baseUrl/profile'),
@@ -1130,6 +1130,7 @@ class ApiService {
         body: jsonEncode({
           if (displayName != null) 'displayName': displayName,
           if (bio != null) 'bio': bio,
+          if (username != null) 'username': username,
         }),
       ));
 

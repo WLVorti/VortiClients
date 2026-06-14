@@ -7,12 +7,16 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:116660736245:android:75b0bcaed6929b25d575bc",
+        "mobilesdk_app_id": "1:116660736245:android:8f6192c0aa54f15ad575bc",
         "android_client_info": {
           "package_name": "com.wlvorti.vorti_messenger"
         }
       },
       "oauth_client": [
+        {
+          "client_id": "116660736245-026n4j7pmcn4cue94soa5296aussb2ba.apps.googleusercontent.com",
+          "client_type": 1
+        },
         {
           "client_id": "116660736245-rhk72if096bp8bnivhn7lr2d5o2j4q90.apps.googleusercontent.com",
           "client_type": 3

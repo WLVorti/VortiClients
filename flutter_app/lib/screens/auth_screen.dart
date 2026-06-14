@@ -426,6 +426,13 @@ class _AuthScreenState extends State<AuthScreen> {
                           final result = await widget.api.signInWithGoogle();
                           setState(() => _isLoading = false);
                           if (result['status'] == 'success' || result['token'] != null) {
+                            final isNew = result['isNew'] == true;
+                            if (isNew && !widget.isAddingAccount && mounted) {
+                              final chosen = await _showUsernameDialog(result['username'] as String? ?? '');
+                              if (chosen != null && mounted) {
+                                await widget.api.updateProfile(username: chosen);
+                              }
+                            }
                             if (widget.isAddingAccount) {
                               if (mounted) Navigator.pop(context);
                             } else {
@@ -478,6 +485,51 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
       ),
     );
+  }
+
+  Future<String?> _showUsernameDialog(String suggested) async {
+    final controller = TextEditingController(text: suggested);
+    final formKey = GlobalKey<FormState>();
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Выберите имя пользователя'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: 'Логин',
+              hintText: '3-32 символа: буквы, цифры, _',
+              prefixText: '@',
+            ),
+            maxLength: 32,
+            validator: (v) {
+              if (v == null || v.trim().length < 3) return 'Минимум 3 символа';
+              if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(v.trim())) return 'Только буквы, цифры и _';
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, controller.text.trim());
+              }
+            },
+            child: const Text('Готово'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
   }
 
   Widget _buildRequirement(String text, bool met) {
