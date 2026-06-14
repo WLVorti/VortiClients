@@ -984,6 +984,95 @@ class ApiService {
     return null;
   }
 
+  Future<Map<String, String>?> uploadFileChunked(File file, {int chunkSize = 2 * 1024 * 1024, int concurrency = 3, void Function(double progress)? onProgress}) async {
+    final fileName = file.path.split(Platform.pathSeparator).last;
+    final mimeType = _getMimeType(file.path);
+    final totalSize = await file.length();
+    int completedBytes = 0;
+
+    void reportProgress() {
+      if (onProgress != null && totalSize > 0) {
+        onProgress(completedBytes / totalSize);
+      }
+    }
+
+    // Init session
+    final initResp = await http.post(
+      Uri.parse('$baseUrl/upload/init'),
+      headers: {'Authorization': 'Bearer $_token', 'Content-Type': 'application/json'},
+      body: jsonEncode({'name': fileName, 'mimeType': mimeType}),
+    );
+    if (initResp.statusCode != 200) {
+      logs.add('[uploadChunked] init failed: ${initResp.statusCode} ${initResp.body}');
+      return null;
+    }
+    final uploadId = jsonDecode(initResp.body)['uploadId'] as String;
+
+    // Upload chunks in parallel with retry
+    final raf = await file.open(mode: FileMode.read);
+    final errors = <String>[];
+    int chunkIndex = 0;
+    final pending = <Future<void>>[];
+
+    try {
+      while (true) {
+        final data = await raf.read(chunkSize);
+        if (data.isEmpty) break;
+
+        final idx = chunkIndex;
+        final chunkLen = data.length;
+        final future = _uploadChunkWithRetry(uploadId, idx, data, errors).then((_) {
+          completedBytes += chunkLen;
+          reportProgress();
+        });
+        pending.add(future);
+        chunkIndex++;
+
+        if (pending.length >= concurrency) {
+          await Future.wait(pending);
+          pending.clear();
+          if (errors.isNotEmpty) break;
+        }
+      }
+      if (pending.isNotEmpty) await Future.wait(pending);
+    } finally {
+      await raf.close();
+    }
+
+    if (errors.isNotEmpty) {
+      for (final e in errors) logs.add('[uploadChunked] $e');
+      return null;
+    }
+
+    // Complete
+    final completeResp = await http.post(
+      Uri.parse('$baseUrl/upload/$uploadId/complete'),
+      headers: {'Authorization': 'Bearer $_token'},
+    );
+    if (completeResp.statusCode != 200) {
+      logs.add('[uploadChunked] complete failed: ${completeResp.statusCode} ${completeResp.body}');
+      return null;
+    }
+    final completeData = jsonDecode(completeResp.body);
+    return {'fileId': completeData['fileId'], 'mimeType': completeData['mimeType']};
+  }
+
+  Future<void> _uploadChunkWithRetry(String uploadId, int chunkIndex, List<int> data, List<String> errors) async {
+    for (int attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt > 0) await Future.delayed(Duration(seconds: attempt));
+        final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/upload/$uploadId/chunk/$chunkIndex'));
+        req.headers['Authorization'] = 'Bearer $_token';
+        req.files.add(http.MultipartFile.fromBytes('file', data, filename: '$chunkIndex'));
+        final resp = await req.send().timeout(const Duration(seconds: 30));
+        if (resp.statusCode == 200) return;
+        errors.add('chunk $chunkIndex attempt $attempt: HTTP ${resp.statusCode}');
+      } catch (e) {
+        errors.add('chunk $chunkIndex attempt $attempt: $e');
+      }
+    }
+  }
+
   String _getMimeType(String path) {
     final ext = path.split('.').last.toLowerCase();
     switch (ext) {

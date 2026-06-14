@@ -8,11 +8,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/avatar_utils.dart';
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/message_cache.dart';
 import '../services/mute_service.dart';
@@ -60,6 +62,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _hasOlderMessages = false;
   bool _isLoadingMore = false;
   bool _isUploading = false;
+  double _uploadProgress = 0.0;
+  String _uploadStatus = '';
   bool _isEditing = false;
   bool _isOtherTyping = false;
   bool _isOtherOnline = false;
@@ -625,16 +629,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     // Upload and send pending file first
     if (hasPendingFile) {
-      setState(() => _isUploading = true);
+      setState(() {
+        _isUploading = true;
+        _uploadProgress = 0.0;
+        _uploadStatus = 'Starting...';
+      });
       try {
         final fileSize = await _pendingFile!.length();
-        if (fileSize > 10 * 1024 * 1024) {
-          _showSnackBar('File too large (max 10MB)');
+        final sizeMb = (fileSize / (1024 * 1024)).toStringAsFixed(1);
+        if (fileSize > 100 * 1024 * 1024) {
+          _showSnackBar('File too large (max 100MB)');
           setState(() => _isUploading = false);
           return;
         }
-        final uploadResult = await widget.api.uploadFile(_pendingFile!);
+        final useChunked = _pendingFileMimeType != null && _pendingFileMimeType!.startsWith('video/') && fileSize > 5 * 1024 * 1024;
+        final uploadResult = useChunked
+          ? await widget.api.uploadFileChunked(_pendingFile!,
+              onProgress: (p) => setState(() {
+                _uploadProgress = p;
+                _uploadStatus = '${(p * 100).toStringAsFixed(0)}% of $sizeMb MB';
+              }),
+            )
+          : await widget.api.uploadFile(_pendingFile!);
         if (uploadResult != null) {
+          setState(() => _uploadStatus = 'Sending...');
           widget.api.sendFile(
             widget.chatId,
             uploadResult['fileId']!,
@@ -838,23 +856,39 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library),
-              title: const Text('Gallery'),
+              title: Text(AppLocalizations.of(context).gallery),
               onTap: () {
                 Navigator.pop(ctx);
                 _pickFromGallery();
               },
             ),
             ListTile(
+              leading: const Icon(Icons.video_library),
+              title: Text(AppLocalizations.of(context).videoLabel),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickVideoFromGallery();
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.camera_alt),
-              title: const Text('Camera'),
+              title: Text(AppLocalizations.of(context).camera),
               onTap: () {
                 Navigator.pop(ctx);
                 _pickFromCamera();
               },
             ),
             ListTile(
+              leading: const Icon(Icons.videocam),
+              title: Text(AppLocalizations.of(context).recordVideo),
+              onTap: () {
+                Navigator.pop(ctx);
+                _recordVideo();
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.attach_file),
-              title: const Text('File'),
+              title: Text(AppLocalizations.of(context).file),
               onTap: () {
                 Navigator.pop(ctx);
                 _pickFile();
@@ -866,15 +900,54 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _pickVideoFromGallery() async {
+    try {
+      if (await _requestGalleryPermission() == false) return;
+      final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
+      if (picked != null) {
+        final file = File(picked.path);
+        setState(() {
+          _pendingFile = file;
+          _pendingFileName = picked.name;
+          _pendingFileMimeType = 'video/${picked.path.split('.').last.toLowerCase()}';
+        });
+      }
+    } catch (e) {
+      _showSnackBar('Error picking video');
+    }
+  }
+
+  Future<void> _recordVideo() async {
+    try {
+      final status = await Permission.camera.request();
+      if (status.isDenied || status.isPermanentlyDenied) {
+        _showSnackBar('Camera permission is required');
+        return;
+      }
+      final picked = await ImagePicker().pickVideo(source: ImageSource.camera);
+      if (picked != null) {
+        final file = File(picked.path);
+        setState(() {
+          _pendingFile = file;
+          _pendingFileName = picked.name;
+          _pendingFileMimeType = 'video/${picked.path.split('.').last.toLowerCase()}';
+        });
+      }
+    } catch (e) {
+      _showSnackBar('Error recording video');
+    }
+  }
+
   Future<void> _pickFromGallery() async {
     try {
       if (await _requestGalleryPermission() == false) return;
-      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+      final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
       if (picked != null) {
         final file = File(picked.path);
         final ext = picked.path.split('.').last.toLowerCase();
+        final compressed = await _compressImage(file);
         setState(() {
-          _pendingFile = file;
+          _pendingFile = compressed ?? file;
           _pendingFileName = picked.name;
           _pendingFileMimeType = 'image/$ext';
         });
@@ -891,12 +964,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _showSnackBar('Camera permission is required');
         return;
       }
-      final picked = await ImagePicker().pickImage(source: ImageSource.camera);
+      final picked = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 85);
       if (picked != null) {
         final file = File(picked.path);
         final ext = picked.path.split('.').last.toLowerCase();
+        final compressed = await _compressImage(file);
         setState(() {
-          _pendingFile = file;
+          _pendingFile = compressed ?? file;
           _pendingFileName = picked.name;
           _pendingFileMimeType = 'image/$ext';
         });
@@ -932,8 +1006,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final file = File(result.files.single.path!);
         final ext = result.files.single.path!.split('.').last.toLowerCase();
         final mimeType = _getPreviewMimeType(ext);
+        final compressed = mimeType.startsWith('image/') ? await _compressImage(file) : null;
         setState(() {
-          _pendingFile = file;
+          _pendingFile = compressed ?? file;
           _pendingFileName = result.files.single.name;
           _pendingFileMimeType = mimeType;
         });
@@ -954,11 +1029,28 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<File?> _compressImage(File file) async {
+    try {
+      final ext = file.path.split('.').last.toLowerCase();
+      if (ext == 'gif' || ext == 'webp') return null;
+      final dir = await getTemporaryDirectory();
+      final outPath = '${dir.path}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final xfile = await FlutterImageCompress.compressAndGetFile(
+        file.absolute.path, outPath,
+        quality: 80,
+        minWidth: 1920,
+        minHeight: 1920,
+      );
+      if (xfile != null && await xfile.length() < await file.length()) return File(xfile.path);
+    } catch (_) {}
+    return null;
+  }
+
   Future<void> _uploadFile(File file) async {
     try {
       final fileSize = await file.length();
-      if (fileSize > 10 * 1024 * 1024) {
-        _showSnackBar('File too large (max 10MB)');
+      if (fileSize > 100 * 1024 * 1024) {
+        _showSnackBar('File too large (max 100MB)');
         return;
       }
 
@@ -988,6 +1080,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _pendingFile = null;
       _pendingFileName = null;
       _pendingFileMimeType = null;
+      _uploadProgress = 0.0;
+      _uploadStatus = '';
     });
   }
 
@@ -1945,41 +2039,47 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final isImage = _pendingFileMimeType?.startsWith('image/') ?? false;
     return Container(
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              width: 48,
-              height: 48,
-              child: isImage && _pendingFile != null
-                  ? Image.file(_pendingFile!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fileIcon())
-                  : _fileIcon(),
-            ),
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: isImage && _pendingFile != null
+                      ? Image.file(_pendingFile!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fileIcon())
+                      : _fileIcon(),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _pendingFileName ?? 'File',
+                  style: const TextStyle(fontSize: 13),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (_isUploading)
+                Text(_uploadStatus, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500))
+              else
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: _cancelPendingFile,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _pendingFileName ?? 'File',
-              style: const TextStyle(fontSize: 13),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (_isUploading)
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.close, size: 18),
-              onPressed: _cancelPendingFile,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-            ),
+          if (_isUploading) ...[
+            const SizedBox(height: 6),
+            LinearProgressIndicator(value: _uploadProgress > 0 ? _uploadProgress : null),
+          ],
+          const SizedBox(height: 4),
         ],
       ),
     );

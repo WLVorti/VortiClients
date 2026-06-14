@@ -37,6 +37,7 @@ dependencies:
   cached_network_image: ^3.3.0
   video_player: ^2.8.0
   video_thumbnail: ^0.5.3
+  flutter_image_compress: ^2.4.0
   just_audio: ^0.9.40
   audio_waveforms: ^1.2.0
   permission_handler: ^11.3.1

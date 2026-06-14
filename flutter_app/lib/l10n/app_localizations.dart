@@ -139,6 +139,8 @@ class AppLocalizations {
   String get noMessagesFound => isRu ? 'Сообщения не найдены' : 'No messages found';
   String get usersNotFound => isRu ? 'Пользователи не найдены' : 'Users not found';
   String get photo => isRu ? 'Фото' : 'Photo';
+  String get videoLabel => isRu ? 'Видео' : 'Video';
+  String get recordVideo => isRu ? 'Записать видео' : 'Record video';
   String get file => isRu ? 'Файл' : 'File';
   String get chat => isRu ? 'Чат' : 'Chat';
   String get group => isRu ? 'Группа' : 'Group';
