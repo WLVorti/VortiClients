@@ -102,6 +102,15 @@ class ThemeColors {
   );
 }
 
+double _yiqBrightness(int r, int g, int b) => (r * 299 + g * 587 + b * 114) / 1000;
+
+Color _contrastOnPrimary(Color primary) {
+  final r = (primary.r * 255).round();
+  final g = (primary.g * 255).round();
+  final b = (primary.b * 255).round();
+  return _yiqBrightness(r, g, b) >= 140 ? const Color(0xFF11141A) : Colors.white;
+}
+
 class ThemeProvider extends ChangeNotifier {
   static const _themeKeyPrefix = 'theme_mode';
   static const _themeIdPrefix = 'theme_id';
@@ -395,6 +404,8 @@ class ThemeProvider extends ChangeNotifier {
       seedColor: colors.primary,
       brightness: brightness,
     ).copyWith(
+      primary: colors.primary,
+      onPrimary: _contrastOnPrimary(colors.primary),
       surface: colors.surface,
       background: colors.background,
       onSurface: colors.text,

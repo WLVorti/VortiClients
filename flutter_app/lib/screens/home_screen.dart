@@ -35,8 +35,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onTabTapped(int index) {
     setState(() => _currentIndex = index);
     _pageController.jumpToPage(index);
-    imageCache.clear();
-    imageCache.clearLiveImages();
   }
 
   @override

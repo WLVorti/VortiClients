@@ -89,6 +89,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 createdAt: _chats[index].createdAt,
                 lastMessage: msg['text'],
                 lastMessageAt: msg['timestamp'],
+                lastMessageKeyType: msg['keyType'],
                 participants: _chats[index].participants,
                 unreadCount: (_unreadCounts[chatId] ?? 0),
               );
@@ -295,9 +296,13 @@ class _ChatsScreenState extends State<ChatsScreen> {
         .then((_) => _loadData());
   }
 
-  String _getLastMessageDisplay(String? lastMessage) {
+  String _getLastMessageDisplay(String? lastMessage, {String? keyType}) {
     if (lastMessage == null || lastMessage.isEmpty) return '';
     
+    if (keyType == 'e2ee_v1') {
+      return '🔒 Encrypted message';
+    }
+
     // Check if message contains [File] or [file] - indicating a file message
     final lowerMessage = lastMessage.toLowerCase();
     if (lowerMessage.contains('[file]')) {
@@ -386,7 +391,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                     ),
                     title: Text(chat.name ?? AppLocalizations.of(context).chat),
                     subtitle: Text(
-                      _getLastMessageDisplay(chat.lastMessage),
+                      _getLastMessageDisplay(chat.lastMessage, keyType: chat.lastMessageKeyType),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(

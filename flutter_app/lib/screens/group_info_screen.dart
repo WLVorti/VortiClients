@@ -115,7 +115,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   radius: 40,
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   backgroundImage: _chatInfo?['avatarUrl'] != null
-                      ? CachedNetworkImageProvider('${ApiService.baseUrl}${_chatInfo!['avatarUrl']}?token=${widget.api.token}')
+                      ? CachedNetworkImageProvider('${ApiService.baseUrl}${_chatInfo!['avatarUrl']}')
                       : null,
                   child: _chatInfo?['avatarUrl'] == null
                       ? Text(

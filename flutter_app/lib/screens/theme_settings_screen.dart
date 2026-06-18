@@ -1,22 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:vorti_messenger/l10n/app_localizations.dart';
 import 'package:vorti_messenger/services/theme_provider.dart';
+import 'package:vorti_messenger/screens/wallpaper_preview_screen.dart';
 
-class ThemeSettingsScreen extends StatelessWidget {
+class ThemeSettingsScreen extends StatefulWidget {
   final ThemeProvider themeProvider;
 
   const ThemeSettingsScreen({required this.themeProvider, super.key});
 
-  String _colorToHex(Color c) => '#${c.value.toRadixString(16).substring(2).toUpperCase()}';
+  @override
+  State<ThemeSettingsScreen> createState() => _ThemeSettingsScreenState();
+}
 
+class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
   @override
   Widget build(BuildContext context) {
-    final currentId = themeProvider.getCurrentThemeId();
+    final currentId = widget.themeProvider.getCurrentThemeId();
     return Scaffold(
-      appBar: AppBar(title: const Text('Theme')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).theme)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text('Presets', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(AppLocalizations.of(context).presets, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 12),
           SizedBox(
             height: 60,
@@ -29,7 +34,7 @@ class ThemeSettingsScreen extends StatelessWidget {
                 return Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: GestureDetector(
-                    onTap: () => themeProvider.applyPreset(preset.id),
+                    onTap: () => widget.themeProvider.applyPreset(preset.id),
                     child: Container(
                       width: 60,
                       decoration: BoxDecoration(
@@ -53,14 +58,42 @@ class ThemeSettingsScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-          const Text('Custom Colors', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(AppLocalizations.of(context).customColors, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 12),
-          _buildColorRow(context, 'Primary', themeProvider.primaryColor),
-          _buildColorRow(context, 'Secondary', themeProvider.secondaryColor),
-          _buildColorRow(context, 'Background', themeProvider.backgroundColor),
-          _buildColorRow(context, 'Surface', themeProvider.surfaceColor),
-          _buildColorRow(context, 'Text', themeProvider.textColor),
-          _buildColorRow(context, 'Text Secondary', themeProvider.textSecondaryColor),
+          _buildColorRow(context, 'Primary', widget.themeProvider.primaryColor),
+          _buildColorRow(context, 'Secondary', widget.themeProvider.secondaryColor),
+          _buildColorRow(context, 'Background', widget.themeProvider.backgroundColor),
+          _buildColorRow(context, 'Surface', widget.themeProvider.surfaceColor),
+          _buildColorRow(context, 'Text', widget.themeProvider.textColor),
+          _buildColorRow(context, 'Text Secondary', widget.themeProvider.textSecondaryColor),
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 8),
+          Text(AppLocalizations.of(context).wallpaperAdaptive, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 4),
+          Text(
+            AppLocalizations.of(context).setWallpaperExtract,
+            style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => WallpaperPreviewScreen(themeProvider: widget.themeProvider),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.wallpaper, size: 20),
+              label: Text(AppLocalizations.of(context).openWallpaperSettings),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -100,18 +133,18 @@ class ThemeSettingsScreen extends StatelessWidget {
       context: ctx,
       backgroundColor: theme.colorScheme.surface,
       isScrollControlled: true,
-      builder: (c) => _ColorPickerSheet(currentColor: currentColor, onColorSelected: (color) { themeProvider.setCustomColor(key, color); }),
+      builder: (c) => _ColorPickerSheet(currentColor: currentColor, onColorSelected: (color) { widget.themeProvider.setCustomColor(key, color); }),
     );
   }
 
   void _createCustomTheme(BuildContext ctx) {
     final theme = Theme.of(ctx);
-    showModalBottomSheet(context: ctx, backgroundColor: theme.colorScheme.surface, isScrollControlled: true, builder: (c) => SafeArea(child: _CustomThemeSheet(themeProvider: themeProvider)));
+    showModalBottomSheet(context: ctx, backgroundColor: theme.colorScheme.surface, isScrollControlled: true, builder: (c) => SafeArea(child: _CustomThemeSheet(themeProvider: widget.themeProvider)));
   }
 
   void _importThemeFromText(BuildContext ctx) {
     final theme = Theme.of(ctx);
-    showModalBottomSheet(context: ctx, backgroundColor: theme.colorScheme.surface, isScrollControlled: true, builder: (c) => SafeArea(child: _ImportThemeSheet(themeProvider: themeProvider)));
+    showModalBottomSheet(context: ctx, backgroundColor: theme.colorScheme.surface, isScrollControlled: true, builder: (c) => SafeArea(child: _ImportThemeSheet(themeProvider: widget.themeProvider)));
   }
 }
 
@@ -140,14 +173,16 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
   }
 
   void _applyHexColor() {
+    final l = AppLocalizations.of(context);
     var hex = _hexController.text.trim().toUpperCase().replaceAll('#', '');
-    if (hex.length != 6) { setState(() => _errorText = 'Enter 6 chars'); return; }
-    try { widget.onColorSelected(Color(int.parse('0xFF$hex'))); Navigator.pop(context); } catch (e) { setState(() => _errorText = 'Invalid'); }
+    if (hex.length != 6) { setState(() => _errorText = l.enter6Chars); return; }
+    try { widget.onColorSelected(Color(int.parse('0xFF$hex'))); Navigator.pop(context); } catch (e) { setState(() => _errorText = l.invalidHex); }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
     final c = HSLColor.fromAHSL(1, _currentHue, _currentSaturation, _currentBrightness);
     final selectedColor = c.toColor();
     final borderColor = theme.colorScheme.outline;
@@ -159,12 +194,12 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Select Color', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            Text(l.selectColor, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             Row(children: [
-              Expanded(child: TextField(controller: _hexController, decoration: InputDecoration(hintText: 'FF0000', labelText: 'Hex', errorText: _errorText, isDense: true, prefixText: '#'), onChanged: (_) => setState(() => _errorText = null))),
+              Expanded(child: TextField(controller: _hexController, decoration: InputDecoration(hintText: 'FF0000', labelText: l.hex, errorText: _errorText, isDense: true, prefixText: '#'), onChanged: (_) => setState(() => _errorText = null))),
               const SizedBox(width: 8),
-              ElevatedButton(onPressed: _applyHexColor, child: const Text('Apply')),
+              ElevatedButton(onPressed: _applyHexColor, child: Text(l.apply)),
             ]),
             const SizedBox(height: 20),
             Container(
@@ -172,7 +207,7 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
               decoration: BoxDecoration(color: selectedColor, shape: BoxShape.circle, border: Border.all(color: borderColor, width: 2)),
             ),
             const SizedBox(height: 16),
-            Text('Hue', style: theme.textTheme.bodySmall),
+            Text(l.hue, style: theme.textTheme.bodySmall),
             Slider(
               value: _currentHue,
               min: 0, max: 360,
@@ -180,7 +215,7 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
               onChanged: (v) => setState(() => _currentHue = v),
               onChangeEnd: (_) => widget.onColorSelected(selectedColor),
             ),
-            Text('Saturation', style: theme.textTheme.bodySmall),
+            Text(l.saturation, style: theme.textTheme.bodySmall),
             Slider(
               value: _currentSaturation,
               min: 0, max: 1,
@@ -188,7 +223,7 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
               onChanged: (v) => setState(() => _currentSaturation = v),
               onChangeEnd: (_) => widget.onColorSelected(selectedColor),
             ),
-            Text('Brightness', style: theme.textTheme.bodySmall),
+            Text(l.brightnessLabel, style: theme.textTheme.bodySmall),
             Slider(
               value: _currentBrightness,
               min: 0, max: 1,
@@ -237,7 +272,7 @@ class _CustomThemeSheetState extends State<_CustomThemeSheet> {
       child: ListView(
         shrinkWrap: true,
         children: [
-          Text('Create Custom Theme', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+          Text(AppLocalizations.of(context).createCustomTheme, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 24),
           _buildPicker(context, 'Primary', _primary, (c) => setState(() => _primary = c)),
           _buildPicker(context, 'Secondary', _secondary, (c) => setState(() => _secondary = c)),
@@ -260,7 +295,7 @@ class _CustomThemeSheetState extends State<_CustomThemeSheet> {
                 );
                 Navigator.pop(context);
               },
-              child: const Text('Create Theme'),
+              child: Text(AppLocalizations.of(context).createCustomTheme),
             ),
           ),
         ],
@@ -341,7 +376,7 @@ class _ImportThemeSheetState extends State<_ImportThemeSheet> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(left: 16, right: 16, top: 16, bottom: MediaQuery.of(context).viewInsets.bottom + 16),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [const Text('Import Theme', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)), const SizedBox(height: 16), TextField(controller: _controller, maxLines: 8, decoration: InputDecoration(errorText: _errorText)), const SizedBox(height: 16), ElevatedButton(onPressed: _apply, child: const Text('Apply'))]),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [Text(AppLocalizations.of(context).importTheme, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)), const SizedBox(height: 16), TextField(controller: _controller, maxLines: 8, decoration: InputDecoration(errorText: _errorText)), const SizedBox(height: 16), ElevatedButton(onPressed: _apply, child: Text(AppLocalizations.of(context).apply))]),
     );
   }
 

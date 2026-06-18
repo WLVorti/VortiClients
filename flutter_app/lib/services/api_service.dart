@@ -11,6 +11,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../models/models.dart';
 import '../models/account.dart';
 import 'theme_provider.dart';
+import 'crypto_service.dart';
+import 'wallpaper_service.dart';
 
 class ApiService {
   static const String baseUrl = 'https://wlvorti.ru:3000';
@@ -376,6 +378,33 @@ class ApiService {
 
   // ==================== Auth ====================
 
+  Future<Map<String, dynamic>> registerWithEmail(String email, String password) async {
+    ApiService.addLog('Register with email: $email to $baseUrl/register/email');
+    try {
+      final res = await _client.post(
+        Uri.parse('$baseUrl/register/email'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
+      );
+
+      ApiService.addLog('Register/email response: ${res.statusCode}');
+      final data = jsonDecode(res.body);
+      if (res.statusCode == 201) {
+        final username = data['username'] as String? ?? email.split('@').first;
+        await _saveAccountFromResponse(data, username);
+        ApiService.addLog('Register/email success: ${data['userId']}');
+        connectWebSocket();
+        return data;
+      } else {
+        ApiService.addLog('Register/email failed: ${data['message']}');
+        return data;
+      }
+    } catch (e) {
+      ApiService.addLog('Register/email EXCEPTION: $e');
+      return {'status': 'error', 'message': '$e'};
+    }
+  }
+
   Future<Map<String, dynamic>> register(
     String username,
     String password,
@@ -478,6 +507,38 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> forgotPassword(String email) async {
+    ApiService.addLog('Forgot password request for: $email');
+    try {
+      final res = await _client.post(
+        Uri.parse('$baseUrl/auth/forgot-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+      final data = jsonDecode(res.body);
+      return data;
+    } catch (e) {
+      ApiService.addLog('Forgot password EXCEPTION: $e');
+      return {'status': 'error', 'message': '$e'};
+    }
+  }
+
+  Future<Map<String, dynamic>> resetPassword(String token, String password) async {
+    ApiService.addLog('Reset password with token: ${token.substring(0, 8)}...');
+    try {
+      final res = await _client.post(
+        Uri.parse('$baseUrl/auth/reset-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'token': token, 'password': password}),
+      );
+      final data = jsonDecode(res.body);
+      return data;
+    } catch (e) {
+      ApiService.addLog('Reset password EXCEPTION: $e');
+      return {'status': 'error', 'message': '$e'};
+    }
+  }
+
   Future<void> _saveAccountFromResponse(Map<String, dynamic> data, String username) async {
     final token = data['token'] as String;
     final userId = data['userId'] as String;
@@ -488,7 +549,9 @@ class ApiService {
     await _storage.write(key: 'userId', value: userId);
 
     ThemeProvider().setCurrentUser(userId);
+    WallpaperService().setCurrentUser(userId);
     await ThemeProvider().loadTheme();
+    await WallpaperService().load();
     await registerSavedDevice();
     
     // Try to get profile info
@@ -724,6 +787,22 @@ class ApiService {
     return (data['messages'] as List).map((m) => Message.fromJson(m)).toList();
   }
 
+  /// Public GET wrapper for external use (e.g. CryptoService)
+  Future<http.Response> httpGet(String path) async {
+    return _requestWithRefresh(() => _client.get(
+      Uri.parse('$baseUrl$path'),
+      headers: _headers,
+    ));
+  }
+
+  void sendKeyExchange(String publicKey) {
+    if (_wsChannel == null) return;
+    _wsChannel!.sink.add(jsonEncode({
+      'type': 'keyExchange',
+      'publicKey': publicKey,
+    }));
+  }
+
   // ==================== WebSocket ====================
 
   void connectWebSocket() {
@@ -740,10 +819,9 @@ class ApiService {
       ApiService.addLog('WS: Already connected');
       return;
     }
-    if (_isReconnecting && _reconnectAttempts >= _maxReconnectAttempts) {
-      ApiService.addLog('WS: Max reconnect attempts reached');
-      print('WS: Max reconnect attempts reached');
-      return;
+    if (_isReconnecting && _reconnectAttempts > _maxReconnectAttempts) {
+      ApiService.addLog('WS: Max reconnect attempts reached, continuing with 15s interval');
+      print('WS: Max reconnect attempts reached, continuing with 15s interval');
     }
 
     _isConnecting = true;
@@ -754,6 +832,10 @@ class ApiService {
       _wsStreamSubscription = _wsChannel!.stream.listen(
         (data) {
           final msg = jsonDecode(data);
+
+          if (msg['type'] == 'connected') {
+            CryptoService.uploadPublicKey(this);
+          }
 
           if (msg['type'] == 'online') {
             final userId = msg['userId'] as String?;
@@ -881,15 +963,14 @@ class ApiService {
     _reconnectAttempts++;
 
     onDisconnected?.call();
-
-    if (_reconnectAttempts > _maxReconnectAttempts) return;
-
     onReconnecting?.call();
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s
-    final delay = Duration(seconds: _reconnectAttempts);
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, then every 15s
+    final delay = _reconnectAttempts <= _maxReconnectAttempts
+        ? Duration(seconds: _reconnectAttempts)
+        : const Duration(seconds: 15);
     print(
-      'WS: Reconnecting in ${delay.inSeconds}s (attempt $_reconnectAttempts/$_maxReconnectAttempts)',
+      'WS: Reconnecting in ${delay.inSeconds}s (attempt $_reconnectAttempts)',
     );
 
     _reconnectTimer = Timer(delay, () {
@@ -900,7 +981,7 @@ class ApiService {
     });
   }
 
-  Future<void> sendMessageViaWs(String chatId, String text, {String? replyTo, String? tempId}) async {
+  Future<void> sendMessageViaWs(String chatId, String text, {String? replyTo, String? tempId, String? keyType}) async {
     if (_wsChannel?.sink != null) {
       try {
         _wsChannel!.sink.add(
@@ -910,9 +991,10 @@ class ApiService {
             'text': text,
             if (replyTo != null) 'replyTo': replyTo,
             if (tempId != null) 'tempId': tempId,
+            if (keyType != null) 'keyType': keyType,
           }),
         );
-        ApiService.addLog('sendMessageViaWs: sent tempId=$tempId chatId=$chatId');
+        ApiService.addLog('sendMessageViaWs: sent tempId=$tempId chatId=$chatId keyType=$keyType');
         return;
       } catch (e) {
         ApiService.addLog('sendMessageViaWs: WS send error for chatId=$chatId tempId=$tempId: $e');
@@ -920,15 +1002,15 @@ class ApiService {
     } else {
       ApiService.addLog('sendMessageViaWs: WS null for chatId=$chatId tempId=$tempId, falling back to REST');
     }
-    await sendMessageViaRest(chatId, text, replyTo: replyTo, tempId: tempId);
+    await sendMessageViaRest(chatId, text, replyTo: replyTo, tempId: tempId, keyType: keyType);
   }
 
-  Future<void> sendMessageViaRest(String chatId, String text, {String? replyTo, String? tempId}) async {
+  Future<void> sendMessageViaRest(String chatId, String text, {String? replyTo, String? tempId, String? keyType}) async {
     try {
       final res = await _client.post(
         Uri.parse('$baseUrl/chats/$chatId/messages'),
         headers: _headers,
-        body: jsonEncode({'text': text, if (replyTo != null) 'replyTo': replyTo}),
+        body: jsonEncode({'text': text, if (replyTo != null) 'replyTo': replyTo, if (keyType != null) 'key_type': keyType}),
       );
       if (res.statusCode == 200) {
         // Don't call onMessage here - server will broadcast it back via WebSocket
@@ -940,8 +1022,8 @@ class ApiService {
     }
   }
 
-  void sendMessage(String chatId, String text, {String? replyTo, String? tempId}) {
-    sendMessageViaWs(chatId, text, replyTo: replyTo, tempId: tempId);
+  void sendMessage(String chatId, String text, {String? replyTo, String? tempId, String? keyType}) {
+    sendMessageViaWs(chatId, text, replyTo: replyTo, tempId: tempId, keyType: keyType);
   }
 
   void sendTyping(String chatId, bool isTyping) {
@@ -1211,7 +1293,7 @@ class ApiService {
 
   // ==================== Profile ====================
 
-  Future<Profile?> updateProfile({String? displayName, String? bio, String? username}) async {
+  Future<Profile?> updateProfile({String? displayName, String? bio, String? username, String? email}) async {
     try {
       final res = await _requestWithRefresh(() => _client.put(
         Uri.parse('$baseUrl/profile'),
@@ -1220,6 +1302,7 @@ class ApiService {
           if (displayName != null) 'displayName': displayName,
           if (bio != null) 'bio': bio,
           if (username != null) 'username': username,
+          if (email != null) 'email': email,
         }),
       ));
 
@@ -1228,9 +1311,15 @@ class ApiService {
         if (data['profile'] != null) {
           return Profile.fromJson(data['profile']);
         }
+      } else {
+        final data = jsonDecode(res.body);
+        if (data['message'] != null) {
+          throw Exception(data['message']);
+        }
       }
     } catch (e) {
       print('Update profile error: $e');
+      rethrow;
     }
     return null;
   }

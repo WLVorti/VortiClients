@@ -9,6 +9,9 @@ import 'services/locale_provider.dart';
 import 'services/notification_service.dart';
 import 'services/mute_service.dart';
 import 'services/message_cache.dart';
+import 'services/crypto_service.dart';
+import 'services/wallpaper_service.dart';
+import 'services/deep_link_service.dart';
 import 'l10n/app_localizations.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
@@ -23,6 +26,7 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   await MessageCache.init();
+  await CryptoService.init();
 
   runApp(const VortiApp());
 }
@@ -34,16 +38,163 @@ class VortiApp extends StatefulWidget {
   State<VortiApp> createState() => _VortiAppState();
 }
 
+class _E2EEPassphraseDialog extends StatefulWidget {
+  final String userId;
+  const _E2EEPassphraseDialog({required this.userId});
+
+  @override
+  State<_E2EEPassphraseDialog> createState() => _E2EEPassphraseDialogState();
+}
+
+class _E2EEPassphraseDialogState extends State<_E2EEPassphraseDialog> {
+  final _controller = TextEditingController();
+  final _confirmController = TextEditingController();
+  bool _obscure = true;
+  bool _isNew = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // First ever launch or reinstall — let user decide
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final phrase = _controller.text.trim();
+    if (phrase.isEmpty) {
+      setState(() => _error = 'Enter a passphrase');
+      return;
+    }
+    if (phrase.length < 4) {
+      setState(() => _error = 'At least 4 characters');
+      return;
+    }
+    if (_isNew && _confirmController.text.trim() != phrase) {
+      setState(() => _error = 'Passphrases do not match');
+      return;
+    }
+    await CryptoService.initWithPassphrase(phrase, widget.userId);
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: Text(_isNew ? 'Set recovery passphrase' : 'Enter recovery passphrase'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _isNew
+                  ? 'This passphrase restores your encryption keys on a new device. '
+                      'Save it securely — without it, old private messages become unreadable.'
+                  : 'Enter the passphrase you set on your previous device to restore encryption keys.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              obscureText: _obscure,
+              decoration: const InputDecoration(
+                labelText: 'Recovery passphrase',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (_) { if (_error != null) setState(() => _error = null); },
+            ),
+            if (_isNew) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _confirmController,
+                obscureText: _obscure,
+                decoration: const InputDecoration(
+                  labelText: 'Confirm passphrase',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) { if (_error != null) setState(() => _error = null); },
+              ),
+            ],
+            if (_error != null) Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Checkbox(
+                  value: !_obscure,
+                  onChanged: (v) => setState(() => _obscure = !(v ?? false)),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() => _obscure = !_obscure),
+                  child: const Text('Show passphrase'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        if (!_isNew)
+          TextButton(
+            onPressed: () => setState(() => _isNew = true),
+            child: const Text('First time — set new'),
+          ),
+        TextButton(
+          onPressed: () => _isNew ? setState(() => _isNew = false) : _submit(),
+          child: Text(_isNew ? 'Back' : 'Continue'),
+        ),
+        if (_isNew)
+          FilledButton(onPressed: _submit, child: const Text('Set & Continue')),
+      ],
+    );
+  }
+}
+
 class _VortiAppState extends State<VortiApp> {
   final _api = ApiService();
   final _notifications = NotificationService();
   bool _isLoading = true;
+  String? _pendingResetToken;
+  final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
     ApiService.init();
     _checkAuth();
+    DeepLinkService().init(_handleDeepLink);
+  }
+
+  void _handleDeepLink(Uri uri) {
+    if (uri.scheme != 'vortimes' || uri.host != 'reset-password') return;
+    String? token = uri.queryParameters['token'];
+    if (token == null || token.isEmpty) {
+      final m = RegExp(r'[?&]token=([^&]+)').firstMatch(uri.toString());
+      token = m?.group(1);
+    }
+    if (token == null || token.isEmpty || !mounted || _api.token != null) return;
+    if (_isLoading) {
+      _pendingResetToken = token;
+    } else {
+      _showResetPasswordFromDeepLink(token);
+    }
+  }
+
+  void _showResetPasswordFromDeepLink(String token) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _navigatorKey.currentContext;
+      if (ctx != null && mounted) showResetPasswordDialog(ctx, _api, '', token);
+    });
   }
 
   Future<void> _checkAuth() async {
@@ -63,8 +214,10 @@ class _VortiAppState extends State<VortiApp> {
 
       ApiService.addLog('_checkAuth: saved token=${_api.token != null}');
       ThemeProvider().setCurrentUser(_api.userId);
+      WallpaperService().setCurrentUser(_api.userId);
       ApiService.addLog('_checkAuth: loading theme...');
       await ThemeProvider().loadTheme();
+      await WallpaperService().load();
       ApiService.addLog('_checkAuth: theme loaded');
       ApiService.addLog('_checkAuth: loading locale...');
       await LocaleProvider().loadLocale();
@@ -91,6 +244,31 @@ class _VortiAppState extends State<VortiApp> {
     if (mounted) {
       setState(() => _isLoading = false);
     }
+
+    if (_pendingResetToken != null && mounted && _api.token == null) {
+      final t = _pendingResetToken!;
+      _pendingResetToken = null;
+      _showResetPasswordFromDeepLink(t);
+    }
+
+    // Check E2EE passphrase setup after auth
+    if (_api.token != null && mounted) {
+      await _ensureE2EE();
+    }
+  }
+
+  Future<void> _ensureE2EE() async {
+    if (await CryptoService.init()) return;
+    if (!mounted) return;
+
+    final uid = _api.userId;
+    if (uid == null) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _E2EEPassphraseDialog(userId: uid),
+    );
+    if (mounted) setState(() {});
   }
 
   StreamSubscription<String?>? _tokenSubscription;
@@ -152,6 +330,7 @@ class _VortiAppState extends State<VortiApp> {
   @override
   void dispose() {
     _tokenSubscription?.cancel();
+    DeepLinkService().dispose();
     MuteService.close();
     super.dispose();
   }
@@ -162,6 +341,7 @@ class _VortiAppState extends State<VortiApp> {
       listenable: Listenable.merge([ThemeProvider(), LocaleProvider()]),
       builder: (context, _) {
         return MaterialApp(
+          navigatorKey: _navigatorKey,
           title: 'Vorti Messenger',
           debugShowCheckedModeBanner: false,
           locale: LocaleProvider().locale,

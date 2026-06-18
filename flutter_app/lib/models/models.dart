@@ -83,6 +83,7 @@ class Profile {
   final String? avatarUrl;
   final int createdAt;
   final int? lastSeenAt;
+  final String email;
 
   Profile({
     required this.id,
@@ -92,6 +93,7 @@ class Profile {
     this.avatarUrl,
     required this.createdAt,
     this.lastSeenAt,
+    this.email = '',
   });
 
   factory Profile.fromJson(Map<String, dynamic> json) {
@@ -103,6 +105,7 @@ class Profile {
       avatarUrl: json['avatarUrl'] ?? json['avatar_url'],
       createdAt: json['createdAt'] ?? json['created_at'] ?? 0,
       lastSeenAt: json['last_seen_at'],
+      email: json['email'] ?? '',
     );
   }
 
@@ -114,6 +117,7 @@ class Profile {
       bio: bio ?? this.bio,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       createdAt: createdAt,
+      email: email,
     );
   }
 }
@@ -125,6 +129,7 @@ class Chat {
   final int createdAt;
   final String? lastMessage;
   final int? lastMessageAt;
+  final String? lastMessageKeyType;
   final List<String> participants;
   final int unreadCount;
   final String? avatarUrl;
@@ -137,6 +142,7 @@ class Chat {
     required this.createdAt,
     this.lastMessage,
     this.lastMessageAt,
+    this.lastMessageKeyType,
     required this.participants,
     this.unreadCount = 0,
     this.avatarUrl,
@@ -151,6 +157,7 @@ class Chat {
       createdAt: json['created_at'] ?? 0,
       lastMessage: json['last_message'],
       lastMessageAt: json['last_message_at'],
+      lastMessageKeyType: json['last_message_key_type'],
       participants: List<String>.from(json['participants'] ?? []),
       unreadCount: json['unread_count'] ?? 0,
       avatarUrl: json['avatarUrl'],
@@ -176,6 +183,8 @@ class Message {
   final bool isEdited;
   final String? editedText;
   final MessageStatus status;
+  final String? keyType;
+  final String? plainText;
 
   Message({
     required this.id,
@@ -192,6 +201,8 @@ class Message {
     this.isEdited = false,
     this.editedText,
     this.status = MessageStatus.sent,
+    this.keyType,
+    this.plainText,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
@@ -223,6 +234,8 @@ class Message {
       isEdited: json['is_edited'] ?? false,
       editedText: json['edited_text'],
       status: parseStatus(json['status']),
+      keyType: json['key_type'],
+      plainText: json['plain_text'],
     );
   }
 
@@ -242,6 +255,8 @@ class Message {
       'is_edited': isEdited,
       'edited_text': editedText,
       'status': status.name,
+      'key_type': keyType,
+      'plain_text': plainText,
     };
   }
 
@@ -252,6 +267,7 @@ class Message {
     String? editedText,
     String? replyText,
     MessageStatus? status,
+    String? plainText,
   }) {
     return Message(
       id: id,
@@ -267,6 +283,8 @@ class Message {
       isEdited: isEdited ?? this.isEdited,
       editedText: editedText ?? this.editedText,
       status: status ?? this.status,
+      keyType: keyType ?? this.keyType,
+      plainText: plainText ?? this.plainText,
     );
   }
 }

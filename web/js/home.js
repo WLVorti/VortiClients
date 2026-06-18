@@ -1,5 +1,22 @@
 let currentTab = 0;
 let pendingMediaFile = null;
+const _decryptedTexts = {}; // msgId -> plaintext
+
+async function _decryptMsgId(msgId, cipherText, fromUserId) {
+  if (_decryptedTexts[msgId] || !fromUserId || fromUserId === Api.userId) return;
+  try {
+    const pubRes = await fetch(`/users/${fromUserId}/public-key`, { headers: Api._authHeaders() });
+    if (!pubRes.ok) return;
+    const pubData = await pubRes.json();
+    if (!pubData.publicKey) return;
+    const plain = await CryptoE2EE.decryptMessage(cipherText, pubData.publicKey);
+    if (!plain) return;
+    _decryptedTexts[msgId] = plain;
+    // Update DOM if message bubble is visible
+    const el = document.querySelector(`.msg[data-msg-id="${msgId}"] .msg-text`);
+    if (el) el.textContent = plain;
+  } catch (_) {}
+}
 
 function showHome() {
   const root = document.getElementById('app');
@@ -118,12 +135,110 @@ function showHome() {
     });
   });
 
-  // ---- Start waterfall and load profile ----
+  // ---- Start waterfall, load profile, init E2EE ----
   Waterfall.init(document.getElementById('waterfall'));
+
+  // E2EE: restore keys or ask for passphrase
+  (async () => {
+    const restored = await CryptoE2EE.init();
+    if (!restored) {
+      // Show passphrase dialog (blocks waterfall)
+      const phrase = await new Promise(resolve => {
+        showE2EEPassphraseDialog(resolve);
+      });
+      if (phrase) {
+        await CryptoE2EE.initWithPassphrase(phrase, Api.userId);
+      }
+    }
+    // Upload public key once WS is connected (handled on open)
+  })();
+
   Api.getProfile().then(p => {
     Api.profile = p;
     renderChats();
   });
+}
+
+// ---- E2EE Passphrase Dialog ----
+function showE2EEPassphraseDialog(resolve) {
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  let isNew = true;
+
+  const actionBtn = document.createElement('div');
+
+  function render() {
+    overlay.innerHTML = `
+      <div class="dialog">
+        <h3>${isNew ? 'Set recovery passphrase' : 'Enter recovery passphrase'}</h3>
+        <p style="color:#999;margin-bottom:16px;font-size:13px">
+          ${isNew
+            ? 'This passphrase restores your encryption keys on a new device. Save it securely — without it, old private messages become unreadable.'
+            : 'Enter the passphrase you set on your previous device to restore encryption keys.'}
+        </p>
+        <div class="field">
+          <input type="password" class="field-input" id="e2eePhrase" placeholder="Recovery passphrase" autocomplete="off" style="width:100%">
+        </div>
+        ${isNew ? `
+        <div class="field">
+          <input type="password" class="field-input" id="e2eeConfirm" placeholder="Confirm passphrase" autocomplete="off" style="width:100%">
+        </div>` : ''}
+        <div class="field">
+          <label style="color:#999;font-size:12px">
+            <input type="checkbox" id="e2eeShowPhrase"> Show passphrase
+          </label>
+        </div>
+        <div id="e2eeError" style="color:#e53935;margin-bottom:8px;display:none"></div>
+        <div class="dialog-actions" id="e2eeActions"></div>
+      </div>`;
+
+    const actions = overlay.querySelector('#e2eeActions');
+    if (!isNew) {
+      const backBtn = document.createElement('button');
+      backBtn.className = 'btn';
+      backBtn.textContent = 'First time — set new';
+      backBtn.onclick = () => { isNew = true; render(); };
+      actions.appendChild(backBtn);
+    }
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'btn';
+    toggleBtn.textContent = isNew ? 'Use existing phrase' : 'Set new phrase';
+    toggleBtn.onclick = () => { isNew = !isNew; render(); };
+    actions.appendChild(toggleBtn);
+    const submitBtn = document.createElement('button');
+    submitBtn.className = 'btn-primary';
+    submitBtn.textContent = isNew ? 'Set & Continue' : 'Continue';
+    submitBtn.onclick = submit;
+    actions.appendChild(submitBtn);
+
+    overlay.querySelector('#e2eeShowPhrase').onchange = function() {
+      const inputs = overlay.querySelectorAll('#e2eePhrase, #e2eeConfirm');
+      inputs.forEach(i => { if (i) i.type = this.checked ? 'text' : 'password'; });
+    };
+  }
+
+  function submit() {
+    const phrase = overlay.querySelector('#e2eePhrase').value.trim();
+    const err = overlay.querySelector('#e2eeError');
+    if (phrase.length < 4) {
+      err.textContent = 'At least 4 characters';
+      err.style.display = '';
+      return;
+    }
+    if (isNew) {
+      const confirm = overlay.querySelector('#e2eeConfirm').value.trim();
+      if (confirm !== phrase) {
+        err.textContent = 'Passphrases do not match';
+        err.style.display = '';
+        return;
+      }
+    }
+    overlay.remove();
+    resolve(phrase);
+  }
+
+  render();
+  document.body.appendChild(overlay);
 }
 
 // ---- Chats Tab ----
@@ -181,7 +296,7 @@ function renderChatsList() {
             <span class="chat-time">${time}</span>
           </div>
           <div class="chat-bottom">
-            <span class="chat-msg">${escapeHtml(chat.last_message || '')}</span>
+            <span class="chat-msg">${chat.last_message_key_type === 'e2ee_v1' ? '🔒 Encrypted message' : escapeHtml(chat.last_message || '')}</span>
             ${unread > 0 ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
           </div>
         </div>
@@ -1771,6 +1886,7 @@ async function loadMessages(chatId) {
   scrollChat();
   result.messages.forEach(m => {
     if (m.user_id !== Api.userId) sendReadReceipt(m.id);
+    if (m.key_type === 'e2ee_v1') _decryptMsgId(m.id, m.text, m.user_id);
   });
   markChatRead(chatId);
 }
@@ -1820,7 +1936,7 @@ function renderMessage(m, isGroup) {
         <div class="msg-bubble">
           ${replyHtml}
           ${mediaHtml}
-          ${m.text && !m.text.startsWith('[File]') ? `<div class="msg-text">${escapeHtml(m.text)}</div>` : ''}
+          ${m.text && !m.text.startsWith('[File]') ? `<div class="msg-text">${escapeHtml(_decryptedTexts[m.id] ?? (m.key_type === 'e2ee_v1' ? '🔒 Encrypted message' : m.text))}</div>` : ''}
           <div class="msg-meta">
             <span class="msg-time">${time}</span>
             ${m.edited ? '<span class="msg-edited">edited</span>' : ''}
@@ -2109,7 +2225,7 @@ function markChatRead(chatId) {
 const _pendingTimers = {};
 const _tempOrdered = {};  // chatId → [tempId, ...]
 
-function addTempMessage(text, tempId, isGroup) {
+function addTempMessage(text, tempId, isGroup, keyType, originalText) {
   if (!_tempOrdered[currentChatId]) _tempOrdered[currentChatId] = [];
   _tempOrdered[currentChatId].push(tempId);
   const el = document.getElementById('chatMessages');
@@ -2117,11 +2233,12 @@ function addTempMessage(text, tempId, isGroup) {
   const empty = el.querySelector('.empty-state');
   if (empty) el.innerHTML = '';
   const now = Date.now();
+  const displayText = keyType === 'e2ee_v1' ? text : originalText || text;
   const m = {
     id: tempId,
     chat_id: currentChatId,
     user_id: Api.userId,
-    text,
+    text: displayText,
     file_id: null,
     file_mime_type: null,
     created_at: now,
@@ -2130,6 +2247,10 @@ function addTempMessage(text, tempId, isGroup) {
     status: 'sending',
     reply: null,
   };
+  if (keyType === 'e2ee_v1') {
+    m.key_type = 'e2ee_v1';
+    _decryptedTexts[tempId] = text;
+  }
   el.insertAdjacentHTML('beforeend', renderMessage(m, isGroup));
   scrollChat();
   const chatId = currentChatId;
@@ -2177,17 +2298,32 @@ async function sendMessage() {
     showToast(sent ? 'Sent' : 'Queued');
     return;
   }
+  let sendText = text;
+  let keyType;
+  if (currentChatType === 'direct' && currentOtherUserId && text) {
+    try {
+      const pubRes = await fetch(`/users/${currentOtherUserId}/public-key`, { headers: Api._authHeaders() });
+      if (pubRes.ok) {
+        const pubData = await pubRes.json();
+        if (pubData.publicKey) {
+              sendText = await CryptoE2EE.encryptMessage(text, pubData.publicKey);
+          if (sendText) keyType = 'e2ee_v1';
+        }
+      }
+    } catch (_) {}
+  }
   const payload = {
     type: 'send',
     chatId: currentChatId,
-    text,
+    text: sendText,
     tempId: 't' + Date.now(),
   };
+  if (keyType) payload.keyType = keyType;
   if (replyToMessageId) payload.replyTo = replyToMessageId;
   const sent = sendViaWs(payload);
   if (sent) {
     input.value = '';
-    addTempMessage(text, payload.tempId, currentChatType === 'group');
+    addTempMessage(keyType === 'e2ee_v1' ? text : sendText, payload.tempId, currentChatType === 'group', keyType, text);
   }
   cancelReply();
 }
@@ -2222,7 +2358,7 @@ function connectWs(chatId) {
       }
 
       if (data.type === 'connected' && data.userId) {
-        // WS authed; online_users event will follow with current online set
+        CryptoE2EE.uploadPublicKey();
       }
 
       if (data.type === 'online') {
@@ -2241,6 +2377,10 @@ function connectWs(chatId) {
         if (!data.tempId && data.userId === Api.userId && data.chatId === currentChatId && _tempOrdered[data.chatId]?.length) {
           const tempId = _tempOrdered[data.chatId].shift();
           const el = document.getElementById('chatMessages');
+          if (data.keyType === 'e2ee_v1' && _decryptedTexts[tempId]) {
+            _decryptedTexts[data.id] = _decryptedTexts[tempId];
+            delete _decryptedTexts[tempId];
+          }
           if (el) {
             for (let i = 0; i < el.children.length; i++) {
               const c = el.children[i];
@@ -2258,13 +2398,14 @@ function connectWs(chatId) {
                   avatar_url: '',
                   status: 'sent',
                   reply: data.reply || null,
+                  key_type: data.keyType,
                 };
                 c.outerHTML = renderMessage(msg, currentChatType === 'group');
                 break;
               }
             }
           }
-          updateChatListLastMessage(data.chatId, data.text || (data.fileId ? '📎 Media' : ''), data.timestamp, false);
+          updateChatListLastMessage(data.chatId, data.keyType === 'e2ee_v1' ? '🔒 Encrypted' : (data.text || (data.fileId ? '📎 Media' : '')), data.timestamp, false);
           return;
         }
         // Dedup: skip if message ID already in DOM
@@ -2290,18 +2431,22 @@ function connectWs(chatId) {
           avatar_url: '',
           status: 'sent',
           reply: data.reply || null,
+          key_type: data.keyType,
         };
         if (data.chatId === currentChatId) {
           addMessage(msg, currentChatType === 'group');
           if (data.userId !== Api.userId) sendReadReceipt(data.id);
         }
         const isFromOther = data.userId !== Api.userId && data.chatId !== currentChatId;
-        updateChatListLastMessage(data.chatId, msg.text || (data.fileId ? '📎 Media' : ''), data.timestamp, isFromOther);
+        updateChatListLastMessage(data.chatId, data.keyType === 'e2ee_v1' ? '🔒 Encrypted' : (msg.text || (data.fileId ? '📎 Media' : '')), data.timestamp, isFromOther);
+        if (data.keyType === 'e2ee_v1' && data.userId !== Api.userId) {
+          _decryptMsgId(data.id, data.text, data.userId);
+        }
       }
 
       if (data.type === 'delivered') {
         document.querySelectorAll(`.msg[data-msg-id="${data.messageId}"] .msg-status`).forEach(el => {
-          if (el.textContent === '✓') el.textContent = '✓✓';
+          if (el.textContent === '✓' || el.textContent === '⏳') el.textContent = '✓✓';
         });
       }
 

@@ -10,6 +10,7 @@ import '../services/api_service.dart';
 import '../utils/avatar_utils.dart';
 import '../services/theme_provider.dart';
 import '../services/locale_provider.dart';
+import '../services/wallpaper_service.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/falling_icons_background.dart';
 import '../models/models.dart';
@@ -34,9 +35,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isUploadingAvatar = false;
   List<Account> _accounts = [];
   Account? _currentAccount;
+  String? _emailError;
 
   final _displayNameController = TextEditingController();
   final _bioController = TextEditingController();
+  final _emailController = TextEditingController();
   final _themeProvider = ThemeProvider();
 
   @override
@@ -44,6 +47,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _loadProfile();
     _loadAccounts();
+    _emailController.addListener(_validateEmail);
+  }
+
+  void _validateEmail() {
+    final email = _emailController.text.trim();
+    setState(() {
+      if (email.isEmpty) {
+        _emailError = null;
+      } else if (!email.contains('@') || !email.contains('.')) {
+        _emailError = 'Некорректный email';
+      } else {
+        _emailError = null;
+      }
+    });
   }
 
   Future<void> _loadAccounts() async {
@@ -138,6 +155,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _isLoading = false;
           _displayNameController.text = profile?.displayName ?? '';
           _bioController.text = profile?.bio ?? '';
+          _emailController.text = profile?.email ?? '';
         });
       }
     } catch (e) {
@@ -151,18 +169,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _saveProfile() async {
+    final email = _emailController.text.trim();
+    if (email.isNotEmpty && (!email.contains('@') || !email.contains('.'))) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Некорректный email')),
+        );
+      }
+      return;
+    }
     setState(() => _isSaving = true);
-    final updatedProfile = await widget.api.updateProfile(
-      displayName: _displayNameController.text,
-      bio: _bioController.text,
-    );
-    if (mounted) {
-      setState(() {
-        if (updatedProfile != null) {
-          _profile = updatedProfile;
-        }
-        _isSaving = false;
-      });
+    try {
+      final updatedProfile = await widget.api.updateProfile(
+        displayName: _displayNameController.text,
+        bio: _bioController.text,
+        email: email.isNotEmpty ? email : null,
+      );
+      if (mounted) {
+        setState(() {
+          if (updatedProfile != null) {
+            _profile = updatedProfile;
+          }
+          _isSaving = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e')),
+        );
+      }
     }
   }
 
@@ -292,16 +329,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
-      body: Stack(fit: StackFit.expand, children: [
-        const Positioned.fill(child: FallingIconsBackground(maxConcurrent: 120)),
-        _isLoading
+      body: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                if (_isLoading)
-                  const Center(child: CircularProgressIndicator())
-                else if (_profile != null)
+                if (_profile != null)
                   Center(
                     child: Stack(
                       children: [
@@ -392,6 +425,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     );
                   },
                 ),
+                const SizedBox(height: 16),
+                Builder(
+                  builder: (context) {
+                    final theme = Theme.of(context);
+                    return TextField(
+                      controller: _emailController,
+                      decoration: InputDecoration(
+                        labelText: 'Email',
+                        hintText: 'example@mail.com',
+                        labelStyle: theme.textTheme.bodyMedium?.copyWith(
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        alignLabelWithHint: true,
+                        prefixIcon: const Icon(Icons.email_outlined),
+                        errorText: _emailError,
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                    );
+                  },
+                ),
+                if (_emailController.text.isEmpty) ...[
+                  const SizedBox(height: 8),
+                  Builder(
+                    builder: (context) {
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          'Укажите email для восстановления аккаунта',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.onErrorContainer,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
                 const SizedBox(height: 16),
                 Builder(
                   builder: (context) {
@@ -565,8 +640,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
-        ],
-      ),
     );
   }
 
@@ -986,6 +1059,8 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
     await widget.api.switchAccount(account.id);
     widget.themeProvider.setCurrentUser(account.id);
     await widget.themeProvider.loadTheme();
+    WallpaperService().setCurrentUser(account.id);
+    await WallpaperService().load();
     widget.onAccountSwitched();
   }
 
@@ -1003,8 +1078,8 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remove account'),
-        content: Text('Remove ${account.displayName ?? account.username} from this device?'),
+        title: const Text('Удалить аккаунт'),
+        content: Text('Удалить ${account.displayName ?? account.username} с этого устройства?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

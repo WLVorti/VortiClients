@@ -45,7 +45,7 @@ class AppLocalizations {
   String get bio => isRu ? 'О себе' : 'Bio';
   String get custom => isRu ? 'Пользовательская' : 'Custom';
   String get editMessage => isRu ? 'Редактировать сообщение' : 'Edit message';
-  String get typeMessage => isRu ? 'Введите сообщение...' : 'Type a message...';
+  String get typeMessage => isRu ? 'Сообщение...' : 'Type a message...';
   String get send => isRu ? 'Отправить' : 'Send';
   String get cancel => isRu ? 'Отмена' : 'Cancel';
   String get save => isRu ? 'Сохранить' : 'Save';
@@ -54,6 +54,7 @@ class AppLocalizations {
   String get reply => isRu ? 'Ответить' : 'Reply';
   String get replyToYourself => isRu ? 'Ответ себе' : 'Reply to yourself';
   String get replyToMessage => isRu ? 'Ответ на сообщение' : 'Reply to message';
+  String get replyTo => isRu ? 'Ответ' : 'Reply to';
   String get messageDeleted => isRu ? 'Сообщение удалено' : 'Message deleted';
   String get noMessagesYet => isRu ? 'Пока нет сообщений' : 'No messages yet';
   String get online => isRu ? 'В сети' : 'Online';
@@ -146,6 +147,57 @@ class AppLocalizations {
   String get group => isRu ? 'Группа' : 'Group';
   String get user => isRu ? 'Пользователь' : 'User';
   String get unknown => isRu ? 'Неизвестно' : 'Unknown';
+
+  // Wallpaper & Theme
+  String get wallpaper => isRu ? 'Обои' : 'Wallpaper';
+  String get wallpaperTheme => isRu ? 'Обои и тема' : 'Wallpaper & Theme';
+  String get changeBackgroundImage => isRu ? 'Изменить фоновое изображение' : 'Change Background Image';
+  String get chooseBackgroundImage => isRu ? 'Выбрать фоновое изображение' : 'Choose Background Image';
+  String get adaptiveSchemeColors => isRu ? 'Адаптивная цветовая схема' : 'Adaptive Scheme Colors';
+  String get paletteStyle => isRu ? 'Стиль палитры' : 'Palette Style';
+  String autoStyle(String name) => isRu ? 'Авто: $name' : 'Auto: $name';
+  String get customColors => isRu ? 'Пользовательские цвета' : 'Custom Colors';
+  String get wallpaperSettings => isRu ? 'Настройки обоев' : 'Wallpaper Settings';
+  String get openWallpaperSettings => isRu ? 'Открыть настройки обоев' : 'Open Wallpaper Settings';
+  String get pickColor => isRu ? 'Выбор цвета' : 'Pick Color';
+  String get apply => isRu ? 'Применить' : 'Apply';
+  String get hue => isRu ? 'Оттенок' : 'Hue';
+  String get saturation => isRu ? 'Насыщенность' : 'Saturation';
+  String get lightness => isRu ? 'Светлота' : 'Lightness';
+  String get brightnessLabel => isRu ? 'Яркость' : 'Brightness';
+  String get presets => isRu ? 'Пресеты' : 'Presets';
+  String get wallpaperAdaptive => isRu ? 'Обои и адаптивная тема' : 'Wallpaper & Adaptive Theme';
+  String get setWallpaperExtract => isRu ? 'Установите обои и автоматически извлеките цвета' : 'Set wallpaper and extract colors automatically';
+  String get styleAtmosphere => isRu ? 'Атмосфера' : 'Atmosphere';
+  String get styleContrast => isRu ? 'Контраст' : 'Contrast';
+  String get styleMono => isRu ? 'Моно' : 'Mono';
+  String get styleVibrant => isRu ? 'Яркий' : 'Vibrant';
+  String get styleAuto => isRu ? 'Авто' : 'Auto';
+  String get createCustomTheme => isRu ? 'Создать свою тему' : 'Create Custom Theme';
+  String get importTheme => isRu ? 'Импорт темы' : 'Import Theme';
+  String get selectColor => isRu ? 'Выберите цвет' : 'Select Color';
+  String get hex => isRu ? 'Шестн.' : 'Hex';
+  String get enter6Chars => isRu ? 'Введите 6 символов' : 'Enter 6 chars';
+  String get invalidHex => isRu ? 'Неверный код' : 'Invalid';
+  String get wallpaperPreview => isRu ? 'Превью обоев' : 'Wallpaper preview';
+  String get previewMsg1 => isRu ? 'Привет! Видел новый дизайн?' : 'Hey! Have you seen the new design?';
+  String get previewMsg2 => isRu ? 'Да! Чистые плоские слои, без глючных эффектов.' : "Yes! Pure flat layers, no messy glass effects.";
+  String get previewMsg3 => isRu ? 'Контраст теперь полностью читаемый.' : 'Contrast looks completely readable now.';
+
+  // Upload / errors
+  String get starting => isRu ? 'Начинаем...' : 'Starting...';
+  String get sending => isRu ? 'Отправляем...' : 'Sending...';
+  String uploadProgress(String percent, String size) => isRu ? '$percent% из $size МБ' : '$percent% of $size MB';
+  String get errorPickingVideo => isRu ? 'Ошибка выбора видео' : 'Error picking video';
+  String get cameraPermissionRequired => isRu ? 'Требуется разрешение камеры' : 'Camera permission is required';
+  String get errorRecordingVideo => isRu ? 'Ошибка записи видео' : 'Error recording video';
+  String get errorPickingGallery => isRu ? 'Ошибка выбора из галереи' : 'Error picking from gallery';
+  String get errorTakingPhoto => isRu ? 'Ошибка съёмки фото' : 'Error taking photo';
+  String get storagePermissionRequired => isRu ? 'Требуется разрешение на доступ к галерее' : 'Storage permission is required to access gallery';
+  String get errorSelectingFile => isRu ? 'Ошибка выбора файла' : 'Error selecting file';
+  String get e2eeLabel => isRu ? '🔒 E2EE' : '🔒 E2EE';
+  String get failedToStartRecording => isRu ? 'Не удалось начать запись' : 'Failed to start recording';
+
   String get rename => isRu ? 'Переименовать' : 'Rename';
   String get renameGroup => isRu ? 'Переименовать группу' : 'Rename group';
   String get transferOwnership => isRu ? 'Передать владение' : 'Transfer ownership';

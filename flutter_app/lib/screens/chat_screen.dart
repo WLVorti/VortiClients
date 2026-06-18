@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -18,6 +20,8 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/message_cache.dart';
 import '../services/mute_service.dart';
+import '../services/crypto_service.dart';
+import '../services/wallpaper_service.dart';
 import '../models/models.dart';
 import '../widgets/falling_icons_background.dart';
 import 'user_profile_screen.dart';
@@ -75,7 +79,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final Set<String> _onlineUsers = {};
   final Set<String> _pendingMessageIds = {};
   final Map<String, Timer> _pendingMessageTimers = {};
-  final List<String> _pendingQueue = [];
+  final Map<String, int> _decryptRetries = {};
   Timer? _draftDebounce;
   Timer? _readDebounce;
   final Set<String> _pendingReadIds = {};
@@ -88,21 +92,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Timer? _recordingTimer;
   final Map<String, String> _participantNames = {};
   final Map<String, AudioPlayer> _audioPlayers = {};
+  final Map<String, String> _decryptedTexts = {};
   bool _isMuted = false;
   File? _pendingFile;
   String? _pendingFileName;
   String? _pendingFileMimeType;
+  String? _wallpaperPath;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _currentUserId = widget.api.userId ?? '';
+    _wallpaperPath = WallpaperService().wallpaperPath;
     _loadCachedMessages();
     _loadMessages();
     _loadDraft();
     _loadMuteStatus();
     widget.api.addMessageListener(_handleMessage);
+    widget.api.onReconnected = _refreshMessageStatus;
     _scrollController.addListener(_onScroll);
     if (widget.chatType == 'group') {
       _loadParticipantNames();
@@ -116,7 +124,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       setState(() {
         for (final m in cached.reversed) {
           if (!_messages.any((e) => e.id == m.id)) {
+            if (m.plainText != null && m.keyType == 'e2ee_v1') {
+              _decryptedTexts[m.id] = m.plainText!;
+            }
             _messages.add(m);
+            if (m.plainText == null) _decryptMessage(m);
           }
         }
         if (!_messagesLoaded) {
@@ -218,7 +230,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _startRecording() async {
     final status = await Permission.microphone.request();
     if (status != PermissionStatus.granted) {
-      _showSnackBar('Microphone permission denied');
+      _showSnackBar(AppLocalizations.of(context).microphonePermissionDenied);
       return;
     }
 
@@ -251,7 +263,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       });
     } catch (e) {
       ApiService.addLog('_startRecording: error=$e');
-      _showSnackBar('Failed to start recording');
+      _showSnackBar(AppLocalizations.of(context).failedToStartRecording);
     }
   }
 
@@ -299,12 +311,48 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _recorderController = null;
   }
 
+  void _decryptMessage(Message msg) {
+    if (msg.keyType != 'e2ee_v1' || msg.text.isEmpty || _decryptedTexts.containsKey(msg.id) || msg.plainText != null) return;
+    try {
+      final otherId = widget.otherUserId ?? (widget.chatType == 'group' ? msg.userId : null);
+      if (otherId == null || otherId == _currentUserId) return;
+      CryptoService.getBox(otherId, widget.api).then((box) {
+        if (box == null) {
+          _scheduleDecryptRetry(msg);
+          return;
+        }
+        final plain = CryptoService.decryptMessage(msg.text, box);
+        if (plain != null && mounted) {
+          setState(() {
+            _decryptedTexts[msg.id] = plain;
+            final idx = _messages.indexWhere((m) => m.id == msg.id);
+            if (idx != -1) {
+              _messages[idx] = _messages[idx].copyWith(plainText: plain);
+              MessageCache.saveMessage(_messages[idx]);
+            }
+          });
+        }
+      });
+    } catch (_) {}
+  }
+
+  void _scheduleDecryptRetry(Message msg) {
+    final retries = _decryptRetries[msg.id] ?? 0;
+    if (retries >= 3) return;
+    _decryptRetries[msg.id] = retries + 1;
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      _decryptMessage(msg);
+      if (_decryptedTexts.containsKey(msg.id)) {
+        _decryptRetries.remove(msg.id);
+      }
+    });
+  }
+
   void _handleMessage(Map<String, dynamic> msg) {
     final type = msg['type'];
 
     if (type == 'message' && msg['chatId'] == widget.chatId) {
-      if (_messages.any((m) => m.id == msg['id'])) return;
-
       final replyData = msg['reply'] as Map<String, dynamic>?;
 
       final message = Message.fromJson({
@@ -315,22 +363,31 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         'file_id': msg['fileId'],
         'reply': replyData,
         'created_at': msg['timestamp'],
+        'key_type': msg['keyType'],
       });
 
+      _decryptMessage(message);
+
       // Replace optimistic message for current user echoes
-      if (message.userId == _currentUserId && _pendingQueue.isNotEmpty) {
-        final tempId = _pendingQueue.removeAt(0);
+      final tempId = msg['tempId'] as String?;
+      if (message.userId == _currentUserId && tempId != null && _pendingMessageIds.remove(tempId)) {
         _pendingMessageTimers[tempId]?.cancel();
         _pendingMessageTimers.remove(tempId);
-        _pendingMessageIds.remove(tempId);
         ApiService.addLog('_handleMessage: confirmed msgId=${msg['id']} tempId=$tempId');
+
+        // Transfer decrypted text from tempId to real message id
+        if (message.keyType == 'e2ee_v1' && _decryptedTexts.containsKey(tempId)) {
+          _decryptedTexts[message.id] = _decryptedTexts[tempId]!;
+          _decryptedTexts.remove(tempId);
+        }
 
         final tempIndex = _messages.indexWhere((m) => m.id == tempId);
         if (tempIndex != -1 && mounted) {
           setState(() {
             _messages[tempIndex] = message;
           });
-          _scrollToBottom(force: true);
+          MessageCache.saveMessage(message);
+          if (_isNearBottom) _scrollToBottom(force: true);
           return;
         }
       }
@@ -340,17 +397,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _scheduleReadReceipts();
       }
 
-      MessageCache.saveMessage(message);
+      if (!mounted) return;
 
-      if (mounted) {
-        setState(() {
+      bool added = false;
+      setState(() {
+        if (!_messages.any((m) => m.id == message.id)) {
           _messages.add(message);
-        });
-      }
+          added = true;
+        }
+      });
+      if (!added) return;
+
+      MessageCache.saveMessage(message);
     }
 
     if (type == 'error') {
-      final errorMsg = msg['message'] as String? ?? 'Send failed';
+      final errorMsg = msg['message'] as String? ?? 'Ошибка отправки';
       final failedMsgId = msg['tempId'] as String?;
       
       ApiService.addLog('_handleMessage: server error chatId=${widget.chatId} tempId=$failedMsgId error=$errorMsg');
@@ -385,7 +447,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
       }
       if (failedMsgId != null) {
-        _showSnackBar('Failed to send: $errorMsg');
+        _showSnackBar('${AppLocalizations.of(context).failedToSend}: $errorMsg');
       }
     }
 
@@ -501,6 +563,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               _messages.add(m);
             }
           }
+          _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
           _isLoading = false;
           _messagesLoaded = true;
           _hasOlderMessages = messages.length >= 50;
@@ -516,14 +579,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           }
         });
 
-        MessageCache.saveMessages(widget.chatId, messages);
+        for (final m in messages) {
+          _decryptMessage(m);
+        }
 
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToBottom(force: true);
-          if (_pendingReadIds.isNotEmpty) {
-            _scheduleReadReceipts();
-          }
-        });
+        MessageCache.saveMessages(widget.chatId, messages);
+        _scrollToBottom(force: true);
+        if (_pendingReadIds.isNotEmpty) {
+          _scheduleReadReceipts();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -536,15 +600,34 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       final messages = await widget.api.getMessages(widget.chatId, limit: 50);
       if (!mounted) return;
-      setState(() {
-        for (final m in messages) {
-          final index = _messages.indexWhere((existing) => existing.id == m.id);
-          if (index != -1 && m.status.index > _messages[index].status.index) {
+      final toAdd = <Message>[];
+      for (final m in messages) {
+        final index = _messages.indexWhere((existing) => existing.id == m.id);
+        if (index != -1) {
+          if (m.status.index > _messages[index].status.index) {
             _messages[index] = _messages[index].copyWith(status: m.status);
             MessageCache.saveMessage(_messages[index]);
           }
+        } else {
+          toAdd.add(m);
+        }
+      }
+      if (toAdd.isEmpty) return;
+      setState(() {
+        _messages.addAll(toAdd);
+        _messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        for (final m in toAdd) {
+          _decryptMessage(m);
+          if (m.userId != _currentUserId) {
+            _pendingReadIds.add(m.id);
+          }
         }
       });
+      if (toAdd.any((m) => m.userId != _currentUserId)) {
+        widget.onMessagesRead?.call();
+      }
+      MessageCache.saveMessages(widget.chatId, toAdd);
+      if (_isNearBottom) _scrollToBottom(force: true);
     } catch (_) {}
   }
 
@@ -554,20 +637,24 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final oldest = _messages.isEmpty ? null : _messages.first.createdAt;
     try {
       final messages = await widget.api.getMessages(widget.chatId, before: oldest, limit: 50);
+      final toInsert = <Message>[];
+      for (final m in messages) {
+        if (!_messages.any((existing) => existing.id == m.id)) {
+          toInsert.add(m);
+        }
+      }
       if (mounted) {
         setState(() {
           _hasOlderMessages = messages.length >= 50;
-          final toInsert = <Message>[];
-          for (final m in messages) {
-            if (!_messages.any((existing) => existing.id == m.id)) {
-              toInsert.add(m);
-            }
-          }
           if (toInsert.isNotEmpty) {
+            toInsert.sort((a, b) => a.createdAt.compareTo(b.createdAt));
             _messages.insertAll(0, toInsert);
           }
           _isLoadingMore = false;
         });
+      }
+      for (final m in toInsert) {
+        _decryptMessage(m);
       }
     } catch (e) {
       if (mounted) setState(() => _isLoadingMore = false);
@@ -615,13 +702,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _saveEdit();
       return;
     }
+    if (_isUploading) return;
 
     final text = _messageController.text.trim();
     final hasPendingFile = _pendingFile != null;
     if (text.isEmpty && !hasPendingFile) return;
 
     if (text.length > _maxMessageLength) {
-      _showSnackBar('Сообщение слишком длинное (макс. $_maxMessageLength символов)');
+      _showSnackBar(AppLocalizations.of(context).messageTooLong);
       return;
     }
 
@@ -632,27 +720,28 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       setState(() {
         _isUploading = true;
         _uploadProgress = 0.0;
-        _uploadStatus = 'Starting...';
+        _uploadStatus = AppLocalizations.of(context).starting;
       });
       try {
         final fileSize = await _pendingFile!.length();
         final sizeMb = (fileSize / (1024 * 1024)).toStringAsFixed(1);
         if (fileSize > 100 * 1024 * 1024) {
-          _showSnackBar('File too large (max 100MB)');
+          _showSnackBar(AppLocalizations.of(context).fileTooLarge);
           setState(() => _isUploading = false);
           return;
         }
         final useChunked = _pendingFileMimeType != null && _pendingFileMimeType!.startsWith('video/') && fileSize > 5 * 1024 * 1024;
+        final l = AppLocalizations.of(context);
         final uploadResult = useChunked
           ? await widget.api.uploadFileChunked(_pendingFile!,
               onProgress: (p) => setState(() {
                 _uploadProgress = p;
-                _uploadStatus = '${(p * 100).toStringAsFixed(0)}% of $sizeMb MB';
+                _uploadStatus = l.uploadProgress((p * 100).toStringAsFixed(0), sizeMb);
               }),
             )
           : await widget.api.uploadFile(_pendingFile!);
         if (uploadResult != null) {
-          setState(() => _uploadStatus = 'Sending...');
+          setState(() => _uploadStatus = l.sending);
           widget.api.sendFile(
             widget.chatId,
             uploadResult['fileId']!,
@@ -660,12 +749,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             mimeType: uploadResult['mimeType'],
           );
         } else {
-          _showSnackBar('Upload failed');
+          _showSnackBar(AppLocalizations.of(context).uploadFailed);
           setState(() => _isUploading = false);
           return;
         }
       } catch (e) {
-        _showSnackBar('Upload failed');
+        _showSnackBar(AppLocalizations.of(context).uploadFailed);
         setState(() => _isUploading = false);
         return;
       }
@@ -677,26 +766,42 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
 
     final pendingId = DateTime.now().millisecondsSinceEpoch.toString();
+    String sendText = text;
+    String? keyType;
+
+    // Encrypt for direct chats
+    if (widget.chatType == 'direct' && widget.otherUserId != null && text.isNotEmpty) {
+      try {
+        final box = await CryptoService.getBox(widget.otherUserId!, widget.api);
+        if (box != null) {
+          sendText = CryptoService.encryptMessage(text, box);
+          keyType = 'e2ee_v1';
+        }
+      } catch (_) {}
+    }
 
     _pendingMessageIds.add(pendingId);
-    _pendingQueue.add(pendingId);
 
     // Add optimistic message immediately
     final tempMsg = Message(
       id: pendingId,
       chatId: widget.chatId,
       userId: _currentUserId,
-      text: text,
+      text: keyType == 'e2ee_v1' ? text : sendText,
       replyTo: replyTo,
       createdAt: DateTime.now().millisecondsSinceEpoch,
       status: MessageStatus.sending,
+      keyType: keyType,
     );
+    if (keyType == 'e2ee_v1') {
+      _decryptedTexts[pendingId] = text;
+    }
     setState(() {
       _messages.add(tempMsg);
     });
     _scrollToBottom(force: true);
 
-    widget.api.sendMessage(widget.chatId, text, replyTo: replyTo, tempId: pendingId);
+    widget.api.sendMessage(widget.chatId, sendText, replyTo: replyTo, tempId: pendingId, keyType: keyType);
 
     _draftDebounce?.cancel();
     _messageController.clear();
@@ -707,9 +812,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _pendingMessageTimers[pendingId] = Timer(const Duration(seconds: 5), () async {
       if (!mounted) return;
       _pendingMessageTimers.remove(pendingId);
-      
-      // Remove from queue
-      _pendingQueue.remove(pendingId);
       
       // Remove optimistic message from UI
       if (mounted) {
@@ -728,7 +830,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final chatTimestamp = DateTime.now().millisecondsSinceEpoch;
         final delivered = recent.any((m) =>
           m.userId == _currentUserId &&
-          m.text == text &&
+          (keyType == 'e2ee_v1' ? m.text == sendText : m.text == text) &&
           (chatTimestamp - m.createdAt).abs() < 60000);
         if (delivered) {
           ApiService.addLog('_sendMessage: message verified delivered via REST, suppressing error');
@@ -754,7 +856,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _replyToMessage = msg.id.isNotEmpty ? msg : null;
         });
       }
-      _showSnackBar('Failed to send message');
+      _showSnackBar(AppLocalizations.of(context).failedToSend);
     });
   }
 
@@ -786,7 +888,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (newText.isEmpty || _editingMessageId == null) return;
 
     if (newText.length > _maxMessageLength) {
-      _showSnackBar('Сообщение слишком длинное (макс. $_maxMessageLength символов)');
+      _showSnackBar(AppLocalizations.of(context).messageTooLong);
       return;
     }
 
@@ -819,15 +921,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete message?'),
+        title: Text(AppLocalizations.of(context).deleteMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: Text(AppLocalizations.of(context).delete, style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -913,7 +1015,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         });
       }
     } catch (e) {
-      _showSnackBar('Error picking video');
+      _showSnackBar(AppLocalizations.of(context).errorPickingVideo);
     }
   }
 
@@ -921,7 +1023,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       final status = await Permission.camera.request();
       if (status.isDenied || status.isPermanentlyDenied) {
-        _showSnackBar('Camera permission is required');
+        _showSnackBar(AppLocalizations.of(context).cameraPermissionRequired);
         return;
       }
       final picked = await ImagePicker().pickVideo(source: ImageSource.camera);
@@ -934,7 +1036,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         });
       }
     } catch (e) {
-      _showSnackBar('Error recording video');
+      _showSnackBar(AppLocalizations.of(context).errorRecordingVideo);
     }
   }
 
@@ -953,7 +1055,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         });
       }
     } catch (e) {
-      _showSnackBar('Error picking from gallery');
+      _showSnackBar(AppLocalizations.of(context).errorPickingGallery);
     }
   }
 
@@ -961,7 +1063,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       final status = await Permission.camera.request();
       if (status.isDenied || status.isPermanentlyDenied) {
-        _showSnackBar('Camera permission is required');
+        _showSnackBar(AppLocalizations.of(context).cameraPermissionRequired);
         return;
       }
       final picked = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 85);
@@ -976,7 +1078,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         });
       }
     } catch (e) {
-      _showSnackBar('Error taking photo');
+      _showSnackBar(AppLocalizations.of(context).errorTakingPhoto);
     }
   }
 
@@ -986,7 +1088,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final status = await Permission.storage.request();
       if (status.isGranted) return true;
       if (status.isPermanentlyDenied) {
-        _showSnackBar('Storage permission is required to access gallery');
+        _showSnackBar(AppLocalizations.of(context).storagePermissionRequired);
         return false;
       }
     } catch (_) {
@@ -1014,7 +1116,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         });
       }
     } catch (e) {
-      _showSnackBar('Error selecting file');
+      _showSnackBar(AppLocalizations.of(context).errorSelectingFile);
     }
   }
 
@@ -1050,7 +1152,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       final fileSize = await file.length();
       if (fileSize > 100 * 1024 * 1024) {
-        _showSnackBar('File too large (max 100MB)');
+        _showSnackBar(AppLocalizations.of(context).fileTooLarge);
         return;
       }
 
@@ -1065,13 +1167,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           mimeType: uploadResult['mimeType'],
         );
       } else {
-        _showSnackBar('Upload failed');
+        _showSnackBar(AppLocalizations.of(context).uploadFailed);
       }
 
       setState(() => _isUploading = false);
     } catch (e) {
       setState(() => _isUploading = false);
-      _showSnackBar('Upload failed');
+      _showSnackBar(AppLocalizations.of(context).uploadFailed);
     }
   }
 
@@ -1107,6 +1209,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _editController.dispose();
     _scrollController.dispose();
     widget.api.removeMessageListener(_handleMessage);
+    if (widget.api.onReconnected == _refreshMessageStatus) {
+      widget.api.onReconnected = null;
+    }
     for (final player in _audioPlayers.values) {
       player.dispose();
     }
@@ -1155,7 +1260,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     radius: 16,
                     backgroundColor: Colors.transparent,
                     backgroundImage: widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
-                        ? CachedNetworkImageProvider('https://wlvorti.ru:3000${widget.avatarUrl}')
+                        ? CachedNetworkImageProvider('${ApiService.baseUrl}${widget.avatarUrl}')
                         : null,
                     onBackgroundImageError: widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
                         ? (_, __) {}
@@ -1188,7 +1293,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     builder: (context) {
                       if (_isOtherTyping) {
                         return Text(
-                          'печатает...',
+                          AppLocalizations.of(context).typing,
                           style: TextStyle(
                             fontSize: 12,
                             color: Theme.of(context).appBarTheme.foregroundColor?.withOpacity(0.7),
@@ -1196,19 +1301,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         );
                       }
                       if (widget.otherUserId != null) {
-                        if (_isOtherTyping) {
-                          return const Text(
-                            'печатает...',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontStyle: FontStyle.italic,
-                              color: Colors.green,
-                            ),
-                          );
-                        }
                         if (_isOtherOnline) {
                           return Text(
-                            'в сети',
+                            AppLocalizations.of(context).online,
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.green.withOpacity(0.9),
@@ -1216,7 +1311,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           );
                         } else {
                           return Text(
-                            'не в сети',
+                            AppLocalizations.of(context).offline,
                             style: TextStyle(
                               fontSize: 12,
                               color: Theme.of(context).appBarTheme.foregroundColor?.withOpacity(0.5),
@@ -1268,7 +1363,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 value: 'info',
                 child: ListTile(
                   leading: const Icon(Icons.info_outline),
-                  title: const Text('Information'),
+                  title: Text(AppLocalizations.of(context).information),
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -1277,7 +1372,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 value: 'mute',
                 child: ListTile(
                   leading: Icon(_isMuted ? Icons.notifications : Icons.notifications_off),
-                  title: Text(_isMuted ? 'Unmute' : 'Mute'),
+                  title: Text(_isMuted ? AppLocalizations.of(context).unmute : AppLocalizations.of(context).mute),
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -1288,7 +1383,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ),
       body: Stack(
         children: [
-          const Positioned.fill(child: FallingIconsBackground()),
+          if (_wallpaperPath != null && File(_wallpaperPath!).existsSync())
+            Positioned.fill(
+              child: Image.file(
+                File(_wallpaperPath!),
+                fit: BoxFit.cover,
+              ),
+            ),
           GestureDetector(
             onTap: () => FocusScope.of(context).unfocus(),
             behavior: HitTestBehavior.translucent,
@@ -1318,8 +1419,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         children: [
                           Text(
                             _replyToMessage!.userId == _currentUserId
-                                ? 'Reply to yourself'
-                                : 'Reply to ${_replyToMessage!.replyUsername ?? 'message'}',
+                                ? AppLocalizations.of(context).replyToYourself
+                                : '${AppLocalizations.of(context).replyTo} ${_replyToMessage!.replyUsername ?? ''}',
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
@@ -1352,7 +1453,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : (_messages.isEmpty
-                        ? const Center(child: Text('No messages yet'))
+                        ? Center(child: Text(AppLocalizations.of(context).noMessagesYet))
                         : ListView.builder(
                             key: PageStorageKey('chat_${widget.chatId}'),
                             controller: _scrollController,
@@ -1361,7 +1462,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             itemCount: _messages.length,
                             itemBuilder: (_, i) {
                               final msg = _messages[_messages.length - 1 - i];
-                              return KeyedSubtree(key: ValueKey(msg.id), child: _buildMessage(msg));
+                              final child = _buildMessage(msg);
+                              if (msg.isDeleted || msg.text == '[deleted]') {
+                                return KeyedSubtree(key: ValueKey(msg.id), child: child);
+                              }
+                              return KeyedSubtree(
+                                key: ValueKey('swipe_${msg.id}'),
+                                child: _buildSwipeableMessage(msg, child),
+                              );
                             },
                           )),
             ),
@@ -1376,11 +1484,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   children: [
                     const Icon(Icons.edit, size: 16),
                     const SizedBox(width: 8),
-                    const Text('Editing message'),
+                    Text(AppLocalizations.of(context).editingMessage),
                     const Spacer(),
                     TextButton(
                       onPressed: _cancelEdit,
-                      child: const Text('Cancel'),
+                      child: Text(AppLocalizations.of(context).cancel),
                     ),
                   ],
                 ),
@@ -1426,8 +1534,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             ],
                             decoration: InputDecoration(
                               hintText: _isEditing
-                                  ? 'Edit message...'
-                                  : 'Type a message...',
+                                  ? AppLocalizations.of(context).editMessageHint
+                                  : AppLocalizations.of(context).typeMessage,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(24),
                                 borderSide: BorderSide.none,
@@ -1498,7 +1606,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             icon: const Icon(Icons.mic),
                           ),
                           IconButton.filled(
-                            onPressed: _sendMessage,
+                            onPressed: _isUploading ? null : _sendMessage,
                             icon: Icon(_isEditing ? Icons.check : Icons.send),
                           ),
                         ],
@@ -1516,16 +1624,39 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildMessage(Message msg) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final myBubble = isDark
-        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.35)
-        : Theme.of(context).colorScheme.primary.withValues(alpha: 0.10);
+    final svc = WallpaperService();
+    final bool adaptive = svc.adaptiveTheme && svc.lastAnalysis != null;
+    final WallpaperAnalysis? wa = svc.lastAnalysis;
+
+    Color myBubbleColor;
+    Color myTextColor;
+    Color mySecTextColor;
+    Color theirBubbleColor;
+    Color theirTextColor;
+    Color theirSecTextColor;
+
+    if (adaptive) {
+      myBubbleColor = wa!.accentColor;
+      myTextColor = wa.textOnAccent;
+      mySecTextColor = wa.textOnAccent.withValues(alpha: 0.7);
+      theirBubbleColor = wa.surfaceColor;
+      theirTextColor = wa.textMain;
+      theirSecTextColor = wa.textSecondary;
+    } else {
+      myBubbleColor = Theme.of(context).colorScheme.primary;
+      myTextColor = Theme.of(context).colorScheme.onSurface;
+      mySecTextColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7);
+      theirBubbleColor = Theme.of(context).colorScheme.surfaceContainerHigh;
+      theirTextColor = Theme.of(context).colorScheme.onSurface;
+      theirSecTextColor = Theme.of(context).colorScheme.onSurfaceVariant;
+    }
+
     if (msg.isDeleted || msg.text == '[deleted]') {
       final isMe = msg.userId == _currentUserId;
       final bubbleColor = isMe
-          ? myBubble
+          ? myBubbleColor
           : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
-      final textColor = Theme.of(context).colorScheme.onSurfaceVariant;
+      final textColor = isMe ? mySecTextColor : Theme.of(context).colorScheme.onSurfaceVariant;
       return Padding(
         padding: EdgeInsets.only(
           left: isMe ? 64 : 12,
@@ -1547,7 +1678,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 Icon(Icons.delete_outline, size: 16, color: textColor),
                 const SizedBox(width: 6),
                 Text(
-                  'Message deleted',
+                  AppLocalizations.of(context).messageDeleted,
                   style: TextStyle(
                     color: textColor,
                     fontStyle: FontStyle.italic,
@@ -1573,7 +1704,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         hasFile && ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].contains(ext);
 
     if (hasFile && isImage) {
-      final imageUrl = 'https://wlvorti.ru:3000/download/${msg.fileId}?token=${widget.api.token}';
+      final imageUrl = '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}';
       return GestureDetector(
         onTap: () {
           Navigator.of(context).push(
@@ -1603,13 +1734,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: CachedNetworkImage(
-                      imageUrl: 'https://wlvorti.ru:3000/download/${msg.fileId}?token=${widget.api.token}',
+                      imageUrl: '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}',
                       fit: BoxFit.contain,
                       errorWidget: (_, __, ___) => Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: isMe
-                              ? myBubble
+                              ? myBubbleColor
                               : Theme.of(
                                   context,
                                 ).colorScheme.surfaceContainerHigh,
@@ -1622,19 +1753,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               Icons.broken_image,
                               size: 20,
                               color: isMe
-                                  ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                                  : Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
+                                  ? mySecTextColor
+                                  : theirSecTextColor,
                             ),
                             const SizedBox(width: 8),
                             Flexible(
                               child: Text(
                                 fileName,
                                 style: TextStyle(
-                                  color: isMe
-                                      ? Theme.of(context).colorScheme.onSurface
-                                      : Theme.of(context).colorScheme.onSurface,
+color: isMe ? myTextColor : theirTextColor,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -1659,8 +1786,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (msg.isEdited)
-                        const Text(
-                          'edited ',
+                        Text(
+                          '${AppLocalizations.of(context).editedLabel} ',
                           style: TextStyle(
                             fontSize: 10,
                             fontStyle: FontStyle.italic,
@@ -1690,11 +1817,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     if (hasFile && isVideo) {
       return GestureDetector(
+        onTap: () => _openVideoFullscreen(
+          '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}',
+        ),
         onLongPress: () => _showMessageMenu(msg),
-        child: GestureDetector(
-          onTap: () => _openVideoFullscreen(
-            'https://wlvorti.ru:3000/download/${msg.fileId}?token=${widget.api.token}',
-          ),
           child: Align(
             alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
             child: ConstrainedBox(
@@ -1714,7 +1840,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(12),
                       child: _VideoThumbnail(
                         videoUrl:
-                            'https://wlvorti.ru:3000/download/${msg.fileId}?token=${widget.api.token}',
+                          '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}',
                         fileName: fileName,
                       ),
                     ),
@@ -1733,8 +1859,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (msg.isEdited)
-                          const Text(
-                            'edited ',
+                          Text(
+                            '${AppLocalizations.of(context).editedLabel} ',
                             style: TextStyle(
                               fontSize: 10,
                               fontStyle: FontStyle.italic,
@@ -1759,7 +1885,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ),
             ),
           ),
-        ),
       );
     }
 
@@ -1780,7 +1905,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
                 decoration: BoxDecoration(
                   color: isMe
-                      ? myBubble
+                      ? myBubbleColor
                       : Theme.of(context).colorScheme.surfaceContainerHigh,
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(16),
@@ -1796,7 +1921,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     _AudioPlayerWidget(
                       audioPlayer: audioPlayer,
                       audioUrl:
-                          'https://wlvorti.ru:3000/download/${msg.fileId}?token=${widget.api.token}',
+          '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}',
                       fileName: fileName,
                       isMe: isMe,
                       showFileName: ext != 'm4a',
@@ -1809,7 +1934,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         children: [
                           if (msg.isEdited)
                             Text(
-                              'edited ',
+                              '${AppLocalizations.of(context).editedLabel} ',
                               style: TextStyle(
                                 fontSize: 10,
                                 fontStyle: FontStyle.italic,
@@ -1861,7 +1986,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
               decoration: BoxDecoration(
                 color: isMe
-                    ? myBubble
+                    ? myBubbleColor
                     : Theme.of(context).colorScheme.surfaceContainerHigh,
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
@@ -1935,21 +2060,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           Padding(
                             padding: const EdgeInsets.only(bottom: 2),
                             child: Text(
-                              _participantNames[msg.userId] ?? 'Unknown',
+                              _participantNames[msg.userId] ?? AppLocalizations.of(context).unknown,
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                color: adaptive ? theirSecTextColor : Theme.of(context).colorScheme.onSurfaceVariant,
                               ),
                             ),
                           ),
-                        Text(
-                          msg.text,
-                          style: TextStyle(
-                            color: isMe
-                                ? Theme.of(context).colorScheme.onSurface
-                                : Theme.of(context).colorScheme.onSurface,
-                          ),
+                        _buildMessageText(
+                          _decryptedTexts[msg.id] ?? msg.plainText ?? (msg.keyType == 'e2ee_v1' ? AppLocalizations.of(context).e2eeLabel : msg.text),
+                          isMe,
                         ),
                       ],
                     ),
@@ -1961,15 +2082,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       children: [
                         if (msg.isEdited)
                           Text(
-                            'edited ',
+                            '${AppLocalizations.of(context).editedLabel} ',
                             style: TextStyle(
                               fontSize: 10,
                               fontStyle: FontStyle.italic,
                               color: isMe
-                                  ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                                  : Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
+                                  ? mySecTextColor
+                                  : theirSecTextColor,
                             ),
                           ),
                         Text(
@@ -1996,6 +2115,29 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSwipeableMessage(Message msg, Widget child) {
+    final isMe = msg.userId == _currentUserId;
+    return Dismissible(
+      key: ValueKey('dismiss_${msg.id}'),
+      direction: isMe ? DismissDirection.startToEnd : DismissDirection.endToStart,
+      dismissThresholds: {
+        isMe ? DismissDirection.startToEnd : DismissDirection.endToStart: 0.18,
+      },
+      movementDuration: const Duration(milliseconds: 200),
+      confirmDismiss: (direction) async {
+        _startReply(msg);
+        return false;
+      },
+      background: Container(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        color: Colors.blue.withAlpha(50),
+        child: const Icon(Icons.reply, color: Colors.blue),
+      ),
+      child: child,
     );
   }
 
@@ -2058,7 +2200,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  _pendingFileName ?? 'File',
+                  _pendingFileName ?? AppLocalizations.of(context).file,
                   style: const TextStyle(fontSize: 13),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -2131,7 +2273,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         id: '',
         chatId: '',
         userId: '',
-        text: '[message not found]',
+        text: AppLocalizations.of(context).messageNotFound,
         createdAt: 0,
       ),
     );
@@ -2150,6 +2292,60 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildMessageText(String text, bool isMe) {
+    final textColor = Theme.of(context).colorScheme.onSurface;
+    final urlRegExp = RegExp(r'https?://[^\s]+');
+    final matches = urlRegExp.allMatches(text).toList();
+
+    if (matches.isEmpty) {
+      return Text(text, style: TextStyle(color: textColor));
+    }
+
+    String stripTrailingPunctuation(String url) {
+      return url.replaceAll(RegExp(r'[.,!?;:)]+$'), '');
+    }
+
+    final spans = <InlineSpan>[];
+    int lastEnd = 0;
+
+    for (final m in matches) {
+      if (m.start > lastEnd) {
+        spans.add(TextSpan(text: text.substring(lastEnd, m.start)));
+      }
+      final rawUrl = text.substring(m.start, m.end);
+      final cleanUrl = stripTrailingPunctuation(rawUrl);
+      spans.add(TextSpan(
+        text: rawUrl,
+        style: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
+        recognizer: TapGestureRecognizer()
+          ..onTap = () => _openUrl(cleanUrl),
+      ));
+      lastEnd = m.end;
+    }
+    if (lastEnd < text.length) {
+      spans.add(TextSpan(text: text.substring(lastEnd)));
+    }
+
+    return RichText(
+      text: TextSpan(style: TextStyle(color: textColor), children: spans),
+    );
+  }
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.platformDefault);
+    } catch (e) {
+      debugPrint('=== URL LAUNCH ERROR: $e ===');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка: $e'), duration: const Duration(seconds: 3)),
+        );
+      }
+    }
+  }
+
   void _showMessageMenu(Message msg) {
     showModalBottomSheet(
       context: context,
@@ -2158,8 +2354,24 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.content_copy),
+              title: Text(AppLocalizations.of(context).copy),
+              onTap: () {
+                Navigator.pop(ctx);
+                final msgText = _decryptedTexts[msg.id] ?? msg.text;
+                if (msgText.isNotEmpty) {
+                  Clipboard.setData(ClipboardData(text: msgText));
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Скопировано'), duration: Duration(seconds: 2)),
+                    );
+                  }
+                }
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.reply),
-              title: const Text('Reply'),
+              title: Text(AppLocalizations.of(context).reply),
               onTap: () {
                 Navigator.pop(ctx);
                 _startReply(msg);
@@ -2168,7 +2380,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             if (msg.userId == _currentUserId) ...[
               ListTile(
                 leading: const Icon(Icons.edit),
-                title: const Text('Edit'),
+                title: Text(AppLocalizations.of(context).edit),
                 onTap: () {
                   Navigator.pop(ctx);
                   _startEdit(msg);
@@ -2176,9 +2388,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ),
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text(
-                  'Delete',
-                  style: TextStyle(color: Colors.red),
+                title: Text(
+                  AppLocalizations.of(context).delete,
+                  style: const TextStyle(color: Colors.red),
                 ),
                 onTap: () {
                   Navigator.pop(ctx);
@@ -2578,14 +2790,14 @@ class _SafeVideoPlayerState extends State<_SafeVideoPlayer> {
           color: Colors.grey[800],
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Column(
+        child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.videocam_off, color: Colors.white54, size: 40),
-            SizedBox(height: 8),
+            const Icon(Icons.videocam_off, color: Colors.white54, size: 40),
+            const SizedBox(height: 8),
             Text(
-              'Video not supported',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
+              AppLocalizations.of(context).videoNotSupported,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ],
         ),
@@ -2735,9 +2947,9 @@ class _VideoFullscreenPlayerState extends State<_VideoFullscreenPlayer> {
           children: [
             Center(
               child: _hasError
-                  ? const Text(
-                      'Video not supported',
-                      style: TextStyle(color: Colors.white),
+                  ? Text(
+                      AppLocalizations.of(context).videoNotSupported,
+                      style: const TextStyle(color: Colors.white),
                     )
                   : !_isInitialized
                   ? const CircularProgressIndicator(color: Colors.white)
