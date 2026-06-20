@@ -23,7 +23,6 @@ import '../services/mute_service.dart';
 import '../services/crypto_service.dart';
 import '../services/wallpaper_service.dart';
 import '../models/models.dart';
-import '../widgets/falling_icons_background.dart';
 import 'user_profile_screen.dart';
 import 'group_info_screen.dart';
 import 'image_viewer_screen.dart';
@@ -76,9 +75,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Message? _replyToMessage;
   late final String _currentUserId;
   final Set<String> _readMessages = {};
-  final Set<String> _onlineUsers = {};
-  final Set<String> _pendingMessageIds = {};
-  final Map<String, Timer> _pendingMessageTimers = {};
   final Map<String, int> _decryptRetries = {};
   Timer? _draftDebounce;
   Timer? _readDebounce;
@@ -350,200 +346,207 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _handleMessage(Map<String, dynamic> msg) {
-    final type = msg['type'];
-
-    if (type == 'message' && msg['chatId'] == widget.chatId) {
-      final replyData = msg['reply'] as Map<String, dynamic>?;
-
-      final message = Message.fromJson({
-        'id': msg['id'],
-        'chat_id': msg['chatId'],
-        'user_id': msg['userId'],
-        'text': msg['text'],
-        'file_id': msg['fileId'],
-        'reply': replyData,
-        'created_at': msg['timestamp'],
-        'key_type': msg['keyType'],
-      });
-
-      _decryptMessage(message);
-
-      // Replace optimistic message for current user echoes
-      final tempId = msg['tempId'] as String?;
-      if (message.userId == _currentUserId && tempId != null && _pendingMessageIds.remove(tempId)) {
-        _pendingMessageTimers[tempId]?.cancel();
-        _pendingMessageTimers.remove(tempId);
-        ApiService.addLog('_handleMessage: confirmed msgId=${msg['id']} tempId=$tempId');
-
-        // Transfer decrypted text from tempId to real message id
-        if (message.keyType == 'e2ee_v1' && _decryptedTexts.containsKey(tempId)) {
-          _decryptedTexts[message.id] = _decryptedTexts[tempId]!;
-          _decryptedTexts.remove(tempId);
+    switch (msg['type']) {
+      case 'message':
+        if (msg['chatId'] == widget.chatId) _handleNewMessage(msg);
+        break;
+      case 'message_edited':
+        if (msg['chatId'] == widget.chatId) _handleMessageEdit(msg);
+        break;
+      case 'message_deleted':
+        if (msg['chatId'] == widget.chatId) _handleMessageDelete(msg);
+        break;
+      case 'error':
+        _handleErrorMessage(msg);
+        break;
+      case 'online':
+        _handleOnlineStatus(msg);
+        break;
+      case 'online_users':
+        if (widget.otherUserId != null) {
+          setState(() => _isOtherOnline = widget.api.isUserOnline(widget.otherUserId!));
         }
+        break;
+      case 'delivered':
+        _handleDelivered(msg);
+        break;
+      case 'read':
+        if (msg['userId'] != _currentUserId) _handleReadReceipt(msg);
+        break;
+      case 'typing':
+        if (msg['chatId'] == widget.chatId && msg['userId'] != _currentUserId) _handleTyping(msg);
+        break;
+    }
+  }
 
-        final tempIndex = _messages.indexWhere((m) => m.id == tempId);
-        if (tempIndex != -1 && mounted) {
-          setState(() {
-            _messages[tempIndex] = message;
-          });
-          MessageCache.saveMessage(message);
-          if (_isNearBottom) _scrollToBottom(force: true);
-          return;
+  void _handleNewMessage(Map<String, dynamic> msg) {
+    final messageId = msg['id'] as String;
+    final tempId = msg['tempId'] as String?;
+    final userId = msg['userId'] as String;
+
+    final replyData = msg['reply'] as Map<String, dynamic>?;
+    final message = Message.fromJson({
+      'id': messageId,
+      'chat_id': msg['chatId'],
+      'user_id': userId,
+      'text': msg['text'],
+      'file_id': msg['fileId'],
+      'reply': replyData,
+      'created_at': msg['timestamp'],
+      'key_type': msg['keyType'],
+    });
+
+    _decryptMessage(message);
+
+    if (!mounted) return;
+
+    debugPrint('[_handleNewMessage] ABOUT TO setState messageId=$messageId tempId=$tempId messages.len=${_messages.length}');
+    setState(() {
+      // 1) Remove any existing copy by tempId OR real messageId (dedup)
+      if (tempId != null) {
+        _messages.removeWhere((m) => m.id == tempId);
+      }
+      _messages.removeWhere((m) => m.id == messageId);
+
+      // 2) If own message without tempId (e.g. offline sync), find + remove pending optimistic
+      if (userId == _currentUserId && tempId == null) {
+        final optimisticIdx = _messages.indexWhere((m) =>
+          m.userId == _currentUserId &&
+          m.status == MessageStatus.sending &&
+          (message.createdAt - m.createdAt).abs() < 15000);
+        if (optimisticIdx != -1) {
+          if (_decryptedTexts.containsKey(_messages[optimisticIdx].id)) {
+            _decryptedTexts[messageId] = _decryptedTexts[_messages[optimisticIdx].id]!;
+            _decryptedTexts.remove(_messages[optimisticIdx].id);
+          }
+          _messages.removeAt(optimisticIdx);
         }
       }
 
-      if (message.userId != _currentUserId) {
-        _pendingReadIds.add(message.id);
-        _scheduleReadReceipts();
+      // 3) Transfer decrypted text from tempId to real id
+      if (tempId != null && _decryptedTexts.containsKey(tempId)) {
+        _decryptedTexts[messageId] = _decryptedTexts[tempId]!;
+        _decryptedTexts.remove(tempId);
       }
 
-      if (!mounted) return;
-
-      bool added = false;
-      setState(() {
-        if (!_messages.any((m) => m.id == message.id)) {
-          _messages.add(message);
-          added = true;
-        }
-      });
-      if (!added) return;
-
+      // 4) Add the real message once
+      _messages.add(message);
       MessageCache.saveMessage(message);
+
+      // 5) Mark for read receipts
+      if (userId != _currentUserId) {
+        _pendingReadIds.add(message.id);
+      }
+    });
+
+    if (userId != _currentUserId) {
+      _scheduleReadReceipts();
+      widget.onMessagesRead?.call();
     }
 
-    if (type == 'error') {
-      final errorMsg = msg['message'] as String? ?? 'Ошибка отправки';
-      final failedMsgId = msg['tempId'] as String?;
-      
-      ApiService.addLog('_handleMessage: server error chatId=${widget.chatId} tempId=$failedMsgId error=$errorMsg');
-      
-      // Restore failed message text
-      final failedText = msg['text'] as String?;
-      final failedReplyTo = msg['replyTo'] as String?;
-      
-      if (failedMsgId != null) {
-        _pendingMessageTimers[failedMsgId]?.cancel();
-        _pendingMessageTimers.remove(failedMsgId);
-        _pendingMessageIds.remove(failedMsgId);
+    if (_isNearBottom) _scrollToBottom(force: true);
+  }
+
+  void _handleMessageEdit(Map<String, dynamic> msg) {
+    setState(() {
+      final index = _messages.indexWhere((m) => m.id == msg['messageId']);
+      if (index != -1) {
+        _messages[index] = _messages[index].copyWith(
+          text: msg['newText'] ?? _messages[index].text,
+          isEdited: true,
+        );
       }
-      
-      if (failedText != null && mounted) {
+    });
+  }
+
+  void _handleMessageDelete(Map<String, dynamic> msg) {
+    final deletedId = msg['messageId'] as String;
+    setState(() {
+      final index = _messages.indexWhere((m) => m.id == deletedId);
+      if (index != -1) {
+        _messages[index] = _messages[index].copyWith(text: '[deleted]');
+        MessageCache.saveMessage(_messages[index]);
+      }
+      for (int i = 0; i < _messages.length; i++) {
+        if (_messages[i].replyTo == deletedId) {
+          _messages[i] = _messages[i].copyWith(replyText: '[deleted]');
+          MessageCache.saveMessage(_messages[i]);
+        }
+      }
+    });
+  }
+
+  void _handleErrorMessage(Map<String, dynamic> msg) {
+    final errorMsg = msg['message'] as String? ?? 'Ошибка отправки';
+    final failedTempId = msg['tempId'] as String?;
+
+    ApiService.addLog('_handleErrorMessage: chatId=${widget.chatId} tempId=$failedTempId error=$errorMsg');
+
+    if (failedTempId != null && mounted) {
+      // Remove failed optimistic message from UI
+      setState(() => _messages.removeWhere((m) => m.id == failedTempId));
+      _decryptedTexts.remove(failedTempId);
+
+      // Restore text for retry
+      final failedText = msg['text'] as String?;
+      if (failedText != null) {
         _messageController.text = failedText;
+        final failedReplyTo = msg['replyTo'] as String?;
         if (failedReplyTo != null) {
           setState(() {
             _replyToMessageId = failedReplyTo;
-            final msgObj = _messages.firstWhere(
+            final reply = _messages.firstWhere(
               (m) => m.id == failedReplyTo,
-              orElse: () => Message(
-                id: '',
-                chatId: '',
-                userId: '',
-                text: '',
-                createdAt: 0,
-              ),
+              orElse: () => Message(id: '', chatId: '', userId: '', text: '', createdAt: 0),
             );
-            _replyToMessage = msgObj.id.isNotEmpty ? msgObj : null;
+            _replyToMessage = reply.id.isNotEmpty ? reply : null;
           });
         }
       }
-      if (failedMsgId != null) {
-        _showSnackBar('${AppLocalizations.of(context).failedToSend}: $errorMsg');
-      }
     }
 
-    if (type == 'message_edited' && msg['chatId'] == widget.chatId) {
+    _showSnackBar('${AppLocalizations.of(context).failedToSend}: $errorMsg');
+  }
+
+  void _handleOnlineStatus(Map<String, dynamic> msg) {
+    if (msg['userId'] == widget.otherUserId) {
+      setState(() => _isOtherOnline = msg['status'] == 'online');
+    }
+  }
+
+  void _handleDelivered(Map<String, dynamic> msg) {
+    final messageId = msg['messageId'];
+    final index = _messages.indexWhere(
+      (m) => m.id == messageId && m.userId == _currentUserId,
+    );
+    if (index != -1) {
       setState(() {
-        final index = _messages.indexWhere((m) => m.id == msg['messageId']);
-        if (index != -1) {
-          _messages[index] = _messages[index].copyWith(
-            text: msg['newText'] ?? _messages[index].text,
-            isEdited: true,
-          );
-        }
+        _messages[index] = _messages[index].copyWith(status: MessageStatus.delivered);
       });
+      MessageCache.saveMessage(_messages[index]);
     }
+  }
 
-    if (type == 'message_deleted' && msg['chatId'] == widget.chatId) {
-      final deletedId = msg['messageId'] as String;
+  void _handleReadReceipt(Map<String, dynamic> msg) {
+    final messageId = msg['messageId'];
+    final index = _messages.indexWhere(
+      (m) => m.id == messageId && m.userId == _currentUserId,
+    );
+    if (index != -1) {
       setState(() {
-        final index = _messages.indexWhere((m) => m.id == deletedId);
-        if (index != -1) {
-          _messages[index] = _messages[index].copyWith(text: '[deleted]');
-          MessageCache.saveMessage(_messages[index]);
-        }
-        for (int i = 0; i < _messages.length; i++) {
-          if (_messages[i].replyTo == deletedId) {
-            _messages[i] = _messages[i].copyWith(replyText: '[deleted]');
-            MessageCache.saveMessage(_messages[i]);
-          }
-        }
+        _messages[index] = _messages[index].copyWith(status: MessageStatus.read);
       });
+      MessageCache.saveMessage(_messages[index]);
     }
+    setState(() => _readMessages.add(messageId));
+  }
 
-    if (type == 'online') {
-      final userId = msg['userId'];
-      final isOnline = msg['status'] == 'online';
-
-      if (userId == widget.otherUserId) {
-        setState(() {
-          _isOtherOnline = isOnline;
-        });
-      }
-    }
-
-    if (type == 'online_users' && widget.otherUserId != null) {
-      setState(() {
-        _isOtherOnline = widget.api.isUserOnline(widget.otherUserId!);
+  void _handleTyping(Map<String, dynamic> msg) {
+    setState(() => _isOtherTyping = msg['isTyping'] == true);
+    if (msg['isTyping'] == true) {
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _isOtherTyping = false);
       });
-    }
-
-    if (type == 'delivered') {
-      final messageId = msg['messageId'];
-      final index = _messages.indexWhere(
-        (m) => m.id == messageId && m.userId == _currentUserId,
-      );
-      if (index != -1) {
-        setState(() {
-          _messages[index] = _messages[index].copyWith(
-            status: MessageStatus.delivered,
-          );
-        });
-        MessageCache.saveMessage(_messages[index]);
-      }
-    }
-
-    if (type == 'read' && msg['userId'] != _currentUserId) {
-      final messageId = msg['messageId'];
-      final index = _messages.indexWhere(
-        (m) => m.id == messageId && m.userId == _currentUserId,
-      );
-      if (index != -1) {
-        setState(() {
-          _messages[index] = _messages[index].copyWith(
-            status: MessageStatus.read,
-          );
-        });
-        MessageCache.saveMessage(_messages[index]);
-      }
-      setState(() {
-        _readMessages.add(messageId);
-      });
-    }
-
-    if (type == 'typing' && msg['chatId'] == widget.chatId) {
-      if (msg['userId'] != _currentUserId) {
-        setState(() {
-          _isOtherTyping = msg['isTyping'] == true;
-        });
-
-        if (msg['isTyping'] == true) {
-          Future.delayed(const Duration(seconds: 3), () {
-            if (mounted) {
-              setState(() => _isOtherTyping = false);
-            }
-          });
-        }
-      }
     }
   }
 
@@ -553,7 +556,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final messages = await widget.api.getMessages(widget.chatId);
       if (mounted) {
         setState(() {
+          final now = DateTime.now().millisecondsSinceEpoch;
           for (final m in messages) {
+            // Skip own messages that still have a pending optimistic counterpart
+            if (m.userId == _currentUserId && _messages.any((o) =>
+              o.userId == _currentUserId &&
+              o.status == MessageStatus.sending &&
+              o.text == m.text &&
+              (now - o.createdAt).abs() < 10000)) continue;
+
             final index = _messages.indexWhere((existing) => existing.id == m.id);
             if (index != -1) {
               if (m.status.index > _messages[index].status.index) {
@@ -601,7 +612,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final messages = await widget.api.getMessages(widget.chatId, limit: 50);
       if (!mounted) return;
       final toAdd = <Message>[];
+      final now = DateTime.now().millisecondsSinceEpoch;
       for (final m in messages) {
+        // Skip own messages that still have a pending optimistic counterpart
+        if (m.userId == _currentUserId && _messages.any((o) =>
+          o.userId == _currentUserId &&
+          o.status == MessageStatus.sending &&
+          o.text == m.text &&
+          (now - o.createdAt).abs() < 10000)) continue;
+
         final index = _messages.indexWhere((existing) => existing.id == m.id);
         if (index != -1) {
           if (m.status.index > _messages[index].status.index) {
@@ -613,20 +632,29 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
       }
       if (toAdd.isEmpty) return;
+      final actuallyAdded = <Message>[];
       setState(() {
-        _messages.addAll(toAdd);
-        _messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         for (final m in toAdd) {
-          _decryptMessage(m);
-          if (m.userId != _currentUserId) {
-            _pendingReadIds.add(m.id);
+          if (!_messages.any((existing) => existing.id == m.id)) {
+            _messages.add(m);
+            actuallyAdded.add(m);
           }
         }
+        if (actuallyAdded.length > 1) {
+          _messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        }
       });
-      if (toAdd.any((m) => m.userId != _currentUserId)) {
+      if (actuallyAdded.isEmpty) return;
+      for (final m in actuallyAdded) {
+        _decryptMessage(m);
+        if (m.userId != _currentUserId) {
+          _pendingReadIds.add(m.id);
+        }
+      }
+      if (actuallyAdded.any((m) => m.userId != _currentUserId)) {
         widget.onMessagesRead?.call();
       }
-      MessageCache.saveMessages(widget.chatId, toAdd);
+      MessageCache.saveMessages(widget.chatId, actuallyAdded);
       if (_isNearBottom) _scrollToBottom(force: true);
     } catch (_) {}
   }
@@ -681,14 +709,28 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
-  void _scrollToBottomOnLoad() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) {
-        Future.delayed(const Duration(milliseconds: 100), _scrollToBottomOnLoad);
-        return;
-      }
-      _scrollController.jumpTo(0.0);
-    });
+  void _navigateToProfileOrGroup() {
+    if (widget.otherUserId != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => UserProfileScreen(
+            api: widget.api,
+            userId: widget.otherUserId!,
+          ),
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GroupInfoScreen(
+            api: widget.api,
+            chatId: widget.chatId,
+          ),
+        ),
+      );
+    }
   }
 
   bool get _isNearBottom {
@@ -765,11 +807,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (text.isEmpty) return;
     }
 
-    final pendingId = DateTime.now().millisecondsSinceEpoch.toString();
-    String sendText = text;
-    String? keyType;
+    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
 
     // Encrypt for direct chats
+    String sendText = text;
+    String? keyType;
     if (widget.chatType == 'direct' && widget.otherUserId != null && text.isNotEmpty) {
       try {
         final box = await CryptoService.getBox(widget.otherUserId!, widget.api);
@@ -780,84 +822,34 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       } catch (_) {}
     }
 
-    _pendingMessageIds.add(pendingId);
-
-    // Add optimistic message immediately
-    final tempMsg = Message(
-      id: pendingId,
-      chatId: widget.chatId,
-      userId: _currentUserId,
-      text: keyType == 'e2ee_v1' ? text : sendText,
-      replyTo: replyTo,
-      createdAt: DateTime.now().millisecondsSinceEpoch,
-      status: MessageStatus.sending,
-      keyType: keyType,
-    );
+    // Store plaintext for E2EE messages
     if (keyType == 'e2ee_v1') {
-      _decryptedTexts[pendingId] = text;
+      _decryptedTexts[tempId] = text;
     }
+
+    // Add optimistic message to UI
     setState(() {
-      _messages.add(tempMsg);
+      _messages.add(Message(
+        id: tempId,
+        chatId: widget.chatId,
+        userId: _currentUserId,
+        text: keyType == 'e2ee_v1' ? text : sendText,
+        replyTo: replyTo,
+        createdAt: DateTime.now().millisecondsSinceEpoch,
+        status: MessageStatus.sending,
+        keyType: keyType,
+      ));
     });
     _scrollToBottom(force: true);
 
-    widget.api.sendMessage(widget.chatId, sendText, replyTo: replyTo, tempId: pendingId, keyType: keyType);
+    // Send via WebSocket with tempId
+    widget.api.sendMessage(widget.chatId, sendText, replyTo: replyTo, tempId: tempId, keyType: keyType);
 
+    // Clear input
     _draftDebounce?.cancel();
     _messageController.clear();
     _cancelReply();
     _clearDraft();
-
-    _pendingMessageTimers[pendingId]?.cancel();
-    _pendingMessageTimers[pendingId] = Timer(const Duration(seconds: 5), () async {
-      if (!mounted) return;
-      _pendingMessageTimers.remove(pendingId);
-      
-      // Remove optimistic message from UI
-      if (mounted) {
-        setState(() {
-          _messages.removeWhere((m) => m.id == pendingId);
-        });
-      }
-
-      final wasPending = _pendingMessageIds.remove(pendingId);
-      ApiService.addLog('_sendMessage: timer fired chatId=${widget.chatId} pendingId=$pendingId wasPending=$wasPending');
-      if (!wasPending) return;
-
-      // If WS dropped before the confirmation arrived, verify delivery via REST
-      try {
-        final recent = await widget.api.getMessages(widget.chatId, limit: 10);
-        final chatTimestamp = DateTime.now().millisecondsSinceEpoch;
-        final delivered = recent.any((m) =>
-          m.userId == _currentUserId &&
-          (keyType == 'e2ee_v1' ? m.text == sendText : m.text == text) &&
-          (chatTimestamp - m.createdAt).abs() < 60000);
-        if (delivered) {
-          ApiService.addLog('_sendMessage: message verified delivered via REST, suppressing error');
-          _refreshMessageStatus();
-          return;
-        }
-      } catch (_) {}
-
-      _messageController.text = text;
-      if (replyTo != null) {
-        setState(() {
-          _replyToMessageId = replyTo;
-          final msg = _messages.firstWhere(
-            (m) => m.id == replyTo,
-            orElse: () => Message(
-              id: '',
-              chatId: '',
-              userId: '',
-              text: '',
-              createdAt: 0,
-            ),
-          );
-          _replyToMessage = msg.id.isNotEmpty ? msg : null;
-        });
-      }
-      _showSnackBar(AppLocalizations.of(context).failedToSend);
-    });
   }
 
   void _startReply(Message msg) {
@@ -961,7 +953,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               title: Text(AppLocalizations.of(context).gallery),
               onTap: () {
                 Navigator.pop(ctx);
-                _pickFromGallery();
+                _pickMedia(ImageSource.gallery);
               },
             ),
             ListTile(
@@ -977,7 +969,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               title: Text(AppLocalizations.of(context).camera),
               onTap: () {
                 Navigator.pop(ctx);
-                _pickFromCamera();
+                _pickMedia(ImageSource.camera);
               },
             ),
             ListTile(
@@ -1040,10 +1032,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _pickFromGallery() async {
+  Future<void> _pickMedia(ImageSource source) async {
     try {
-      if (await _requestGalleryPermission() == false) return;
-      final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+      if (source == ImageSource.gallery && await _requestGalleryPermission() == false) return;
+      if (source == ImageSource.camera) {
+        final status = await Permission.camera.request();
+        if (status.isDenied || status.isPermanentlyDenied) {
+          _showSnackBar(AppLocalizations.of(context).cameraPermissionRequired);
+          return;
+        }
+      }
+      final picked = await ImagePicker().pickImage(source: source, imageQuality: 85);
       if (picked != null) {
         final file = File(picked.path);
         final ext = picked.path.split('.').last.toLowerCase();
@@ -1055,30 +1054,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         });
       }
     } catch (e) {
-      _showSnackBar(AppLocalizations.of(context).errorPickingGallery);
-    }
-  }
-
-  Future<void> _pickFromCamera() async {
-    try {
-      final status = await Permission.camera.request();
-      if (status.isDenied || status.isPermanentlyDenied) {
-        _showSnackBar(AppLocalizations.of(context).cameraPermissionRequired);
-        return;
-      }
-      final picked = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 85);
-      if (picked != null) {
-        final file = File(picked.path);
-        final ext = picked.path.split('.').last.toLowerCase();
-        final compressed = await _compressImage(file);
-        setState(() {
-          _pendingFile = compressed ?? file;
-          _pendingFileName = picked.name;
-          _pendingFileMimeType = 'image/$ext';
-        });
-      }
-    } catch (e) {
-      _showSnackBar(AppLocalizations.of(context).errorTakingPhoto);
+      _showSnackBar(
+        source == ImageSource.camera
+            ? AppLocalizations.of(context).errorTakingPhoto
+            : AppLocalizations.of(context).errorPickingGallery,
+      );
     }
   }
 
@@ -1148,35 +1128,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return null;
   }
 
-  Future<void> _uploadFile(File file) async {
-    try {
-      final fileSize = await file.length();
-      if (fileSize > 100 * 1024 * 1024) {
-        _showSnackBar(AppLocalizations.of(context).fileTooLarge);
-        return;
-      }
-
-      setState(() => _isUploading = true);
-
-      final uploadResult = await widget.api.uploadFile(file);
-
-      if (uploadResult != null) {
-        widget.api.sendFile(
-          widget.chatId,
-          uploadResult['fileId']!,
-          mimeType: uploadResult['mimeType'],
-        );
-      } else {
-        _showSnackBar(AppLocalizations.of(context).uploadFailed);
-      }
-
-      setState(() => _isUploading = false);
-    } catch (e) {
-      setState(() => _isUploading = false);
-      _showSnackBar(AppLocalizations.of(context).uploadFailed);
-    }
-  }
-
   void _cancelPendingFile() {
     setState(() {
       _pendingFile = null;
@@ -1195,10 +1146,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    for (final timer in _pendingMessageTimers.values) {
-      timer.cancel();
-    }
-    _pendingMessageTimers.clear();
     _draftDebounce?.cancel();
     _draftDebounce = null;
     _readDebounce?.cancel();
@@ -1221,34 +1168,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('[_ChatScreenState.build] messages.len=${_messages.length}');
     return Scaffold(
       appBar: AppBar(
         title: Row(
           children: [
             GestureDetector(
-              onTap: () {
-                if (widget.otherUserId != null) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => UserProfileScreen(
-                        api: widget.api,
-                        userId: widget.otherUserId!,
-                      ),
-                    ),
-                  );
-                } else {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => GroupInfoScreen(
-                        api: widget.api,
-                        chatId: widget.chatId,
-                      ),
-                    ),
-                  );
-                }
-              },
+              onTap: _navigateToProfileOrGroup,
               child: Stack(
                 children: [
                   CircleAvatar(
@@ -1332,27 +1258,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             icon: const Icon(Icons.more_vert),
             onSelected: (value) async {
               if (value == 'info') {
-                if (widget.otherUserId != null) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => UserProfileScreen(
-                        api: widget.api,
-                        userId: widget.otherUserId!,
-                      ),
-                    ),
-                  );
-                } else {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => GroupInfoScreen(
-                        api: widget.api,
-                        chatId: widget.chatId,
-                      ),
-                    ),
-                  );
-                }
+                _navigateToProfileOrGroup();
               } else if (value == 'mute') {
                 await MuteService.toggle(widget.chatId);
                 await _loadMuteStatus();
@@ -1644,8 +1550,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       theirSecTextColor = wa.textSecondary;
     } else {
       myBubbleColor = Theme.of(context).colorScheme.primary;
-      myTextColor = Theme.of(context).colorScheme.onSurface;
-      mySecTextColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7);
+      myTextColor = Theme.of(context).colorScheme.onPrimary;
+      mySecTextColor = Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7);
       theirBubbleColor = Theme.of(context).colorScheme.surfaceContainerHigh;
       theirTextColor = Theme.of(context).colorScheme.onSurface;
       theirSecTextColor = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -1889,8 +1795,11 @@ color: isMe ? myTextColor : theirTextColor,
     }
 
     if (hasFile && isAudio) {
-      debugPrint('[_buildMessage.audio] msgId=${msg.id} deleted=${msg.isDeleted} fileId=${msg.fileId}');
-      final audioPlayer = _audioPlayers.putIfAbsent(msg.id, () => AudioPlayer());
+      debugPrint('[_buildMessage.audio] msgId=${msg.id} deleted=${msg.isDeleted} fileId=${msg.fileId} playerExists=${_audioPlayers.containsKey(msg.id)}');
+      final audioPlayer = _audioPlayers.putIfAbsent(msg.id, () => AudioPlayer(
+        handleInterruptions: false,
+        androidApplyAudioAttributes: false,
+      ));
       return GestureDetector(
         onLongPress: () => _showMessageMenu(msg),
         child: Align(
@@ -1919,12 +1828,14 @@ color: isMe ? myTextColor : theirTextColor,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _AudioPlayerWidget(
+                      key: ValueKey('audio_${msg.id}'),
                       audioPlayer: audioPlayer,
                       audioUrl:
           '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}',
                       fileName: fileName,
                       isMe: isMe,
                       showFileName: ext != 'm4a',
+                      onComplete: () => _onAudioComplete(msg.id),
                     ),
                     const SizedBox(height: 4),
                     Align(
@@ -1938,22 +1849,14 @@ color: isMe ? myTextColor : theirTextColor,
                               style: TextStyle(
                                 fontSize: 10,
                                 fontStyle: FontStyle.italic,
-                                color: isMe
-                                    ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                                    : Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
+                                color: isMe ? mySecTextColor : theirSecTextColor,
                               ),
                             ),
                             Text(
                               _formatTime(msg.createdAt),
                               style: TextStyle(
                                 fontSize: 10,
-                                color: isMe
-                                    ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                                    : Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
+                                color: isMe ? mySecTextColor : theirSecTextColor,
                             ),
                           ),
                           if (isMe) ...[
@@ -1985,9 +1888,7 @@ color: isMe ? myTextColor : theirTextColor,
               margin: const EdgeInsets.symmetric(vertical: 2),
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
               decoration: BoxDecoration(
-                color: isMe
-                    ? myBubbleColor
-                    : Theme.of(context).colorScheme.surfaceContainerHigh,
+                color: isMe ? myBubbleColor : theirBubbleColor,
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
                   topRight: const Radius.circular(16),
@@ -2006,9 +1907,7 @@ color: isMe ? myTextColor : theirTextColor,
                       decoration: BoxDecoration(
                         border: Border(
                           left: BorderSide(
-                            color: isMe
-                                ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                                : Theme.of(context).colorScheme.primary,
+                          color: isMe ? mySecTextColor : Theme.of(context).colorScheme.primary,
                             width: 2,
                           ),
                         ),
@@ -2020,9 +1919,7 @@ color: isMe ? myTextColor : theirTextColor,
                         style: TextStyle(
                           fontSize: 10,
                           fontStyle: FontStyle.italic,
-                          color: isMe
-                              ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: isMe ? mySecTextColor : theirSecTextColor,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -2035,9 +1932,7 @@ color: isMe ? myTextColor : theirTextColor,
                         Icon(
                           Icons.attach_file,
                           size: 20,
-                          color: isMe
-                              ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: isMe ? mySecTextColor : theirSecTextColor,
                         ),
                         const SizedBox(width: 8),
                         Flexible(
@@ -2070,7 +1965,7 @@ color: isMe ? myTextColor : theirTextColor,
                           ),
                         _buildMessageText(
                           _decryptedTexts[msg.id] ?? msg.plainText ?? (msg.keyType == 'e2ee_v1' ? AppLocalizations.of(context).e2eeLabel : msg.text),
-                          isMe,
+                          isMe ? myTextColor : theirTextColor,
                         ),
                       ],
                     ),
@@ -2095,11 +1990,7 @@ color: isMe ? myTextColor : theirTextColor,
                           _formatTime(msg.createdAt),
                           style: TextStyle(
                             fontSize: 10,
-                            color: isMe
-                                ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                                : Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
+                            color: isMe ? mySecTextColor : theirSecTextColor,
                           ),
                         ),
                         if (isMe) ...[
@@ -2139,42 +2030,6 @@ color: isMe ? myTextColor : theirTextColor,
       ),
       child: child,
     );
-  }
-
-  Widget _VideoPlayerWidget({required String videoUrl}) {
-    return FutureBuilder<bool>(
-      future: _checkVideoCanPlay(videoUrl),
-      builder: (context, snapshot) {
-        if (snapshot.data != true) {
-          return Container(
-            height: 150,
-            decoration: BoxDecoration(
-              color: Colors.grey[800],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
-          );
-        }
-        return _VideoPlayer(videoUrl: videoUrl);
-      },
-    );
-  }
-
-  Future<bool> _checkVideoCanPlay(String url) async {
-    try {
-      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
-      await controller.initialize();
-      await controller.dispose();
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Widget _VideoPlayer({required String videoUrl}) {
-    return _SafeVideoPlayer(videoUrl: videoUrl);
   }
 
   Widget _buildPendingFilePreview() {
@@ -2292,8 +2147,7 @@ color: isMe ? myTextColor : theirTextColor,
     );
   }
 
-  Widget _buildMessageText(String text, bool isMe) {
-    final textColor = Theme.of(context).colorScheme.onSurface;
+  Widget _buildMessageText(String text, Color textColor) {
     final urlRegExp = RegExp(r'https?://[^\s]+');
     final matches = urlRegExp.allMatches(text).toList();
 
@@ -2404,6 +2258,27 @@ color: isMe ? myTextColor : theirTextColor,
     );
   }
 
+  void _onAudioComplete(String completedId) {
+    final completed = _messages.where((m) => m.id == completedId).firstOrNull;
+    if (completed == null) return;
+    const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'];
+    bool isAudioFile(Message m) {
+      if (m.fileId == null) return false;
+      final fileName = m.text.replaceFirst('[File] ', '');
+      final ext = fileName.split('.').last.toLowerCase();
+      return audioExts.contains(ext);
+    }
+    final next = _messages
+        .where((m) => m.createdAt > completed.createdAt && isAudioFile(m))
+        .fold<Message?>(null, (min, m) =>
+            min == null || m.createdAt < min.createdAt ? m : min);
+    if (next == null) return;
+    for (final entry in _audioPlayers.entries) {
+      if (entry.key != next.id) entry.value.pause();
+    }
+    _audioPlayers[next.id]?.play();
+  }
+
   String _formatTime(int timestamp) {
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
     return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
@@ -2422,6 +2297,7 @@ class _AudioPlayerWidget extends StatefulWidget {
   final String fileName;
   final bool isMe;
   final bool showFileName;
+  final VoidCallback? onComplete;
 
   const _AudioPlayerWidget({
     super.key,
@@ -2430,6 +2306,7 @@ class _AudioPlayerWidget extends StatefulWidget {
     required this.fileName,
     required this.isMe,
     this.showFileName = true,
+    this.onComplete,
   });
 
   @override
@@ -2438,6 +2315,7 @@ class _AudioPlayerWidget extends StatefulWidget {
 
 class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
   static int _instanceCounter = 0;
+  static final Map<AudioPlayer, String> _playerUrls = {};
   final int _instanceId = _instanceCounter++;
   late AudioPlayer _audioPlayer;
   bool _isInitialized = false;
@@ -2452,20 +2330,55 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
     super.initState();
     debugPrint('[_AudioPlayerWidgetState#$runtimeType.initState] instance=$_instanceId url=${widget.audioUrl}');
     _audioPlayer = widget.audioPlayer;
+    _setupStreams();
     _initAudio();
+  }
+
+  void _setupStreams() {
+    _positionSub?.cancel();
+    _playerStateSub?.cancel();
+    _positionSub = _audioPlayer.positionStream.listen((pos) {
+      if (mounted && pos.inSeconds >= 0) {
+        if (_position > Duration.zero && pos == Duration.zero) {
+          debugPrint('[_AudioWidget#${_instanceId}.positionStream] RESET TO ZERO _isPlaying=$_isPlaying');
+        }
+        setState(() => _position = pos);
+      }
+    });
+    _playerStateSub = _audioPlayer.playerStateStream.listen((state) {
+      if (mounted) {
+        if (_isPlaying && !state.playing) {
+          debugPrint('[_AudioWidget#${_instanceId}.playerStateStream] PLAYING→STOPPED processingState=${state.processingState}');
+        }
+        setState(() {
+          _isPlaying = state.playing;
+          if (state.processingState == ProcessingState.completed) {
+            _audioPlayer.seek(Duration.zero);
+            _audioPlayer.pause();
+          }
+        });
+        if (state.processingState == ProcessingState.completed) {
+          widget.onComplete?.call();
+        }
+      }
+    });
   }
 
   @override
   void didUpdateWidget(covariant _AudioPlayerWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    debugPrint('[_AudioWidget#${_instanceId}.didUpdateWidget] url=${widget.audioUrl} sameUrl=${oldWidget.audioUrl == widget.audioUrl}');
     if (oldWidget.audioUrl != widget.audioUrl) {
-      _audioPlayer.setUrl(widget.audioUrl);
+      debugPrint('[_AudioWidget#${_instanceId}.didUpdateWidget] URL CHANGED, reloading');
+      _playerUrls.remove(_audioPlayer);
+      _initAudio();
     }
   }
 
   Future<void> _initAudio() async {
-    try {
-      await _audioPlayer.setUrl(widget.audioUrl);
+    final cachedUrl = _playerUrls[_audioPlayer];
+    debugPrint('[_AudioWidget#${_instanceId}._initAudio] cachedUrl=$cachedUrl widgetUrl=${widget.audioUrl} skip=${cachedUrl == widget.audioUrl}');
+    if (cachedUrl == widget.audioUrl) {
       final duration = _audioPlayer.duration;
       if (mounted) {
         setState(() {
@@ -2473,22 +2386,20 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
           _duration = duration ?? Duration.zero;
         });
       }
-      _audioPlayer.positionStream.listen((pos) {
-        if (mounted) {
-          setState(() => _position = pos);
-        }
-      });
-      _audioPlayer.playerStateStream.listen((state) {
-        if (mounted) {
-          setState(() {
-            _isPlaying = state.playing;
-            if (state.processingState == ProcessingState.completed) {
-              _audioPlayer.seek(Duration.zero);
-              _audioPlayer.pause();
-            }
-          });
-        }
-      });
+      return;
+    }
+    try {
+      debugPrint('[_AudioWidget#${_instanceId}._initAudio] CALLING setUrl url=${widget.audioUrl}');
+      await _audioPlayer.setUrl(widget.audioUrl);
+      _playerUrls[_audioPlayer] = widget.audioUrl;
+      debugPrint('[_AudioWidget#${_instanceId}._initAudio] setUrl OK');
+      final duration = _audioPlayer.duration;
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+          _duration = duration ?? Duration.zero;
+        });
+      }
     } catch (e) {
       debugPrint('Audio init failed: $e');
     }
@@ -2503,7 +2414,7 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
   }
 
   String _formatDuration(Duration d) {
-    final min = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final min = d.inMinutes.remainder(60);
     final sec = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$min:$sec';
   }
@@ -2518,118 +2429,97 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final textColor = widget.isMe
+        ? Theme.of(context).colorScheme.onPrimary
+        : Theme.of(context).colorScheme.onSurface;
+    final dimColor = textColor.withValues(alpha: 0.6);
+    final accentColor = widget.isMe ? dimColor : Theme.of(context).colorScheme.primary;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              onPressed: _isInitialized ? _togglePlayPause : null,
-              icon: Icon(
-                _isPlaying ? Icons.pause : Icons.play_arrow,
-                color: widget.isMe
-                    ? Theme.of(context).colorScheme.onSurface
-                    : Theme.of(context).colorScheme.onSurface,
-              ),
-              iconSize: 32,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
+        GestureDetector(
+          onTap: _isInitialized ? _togglePlayPause : null,
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: textColor.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (widget.showFileName)
-                    Text(
-                      widget.fileName,
-                      style: TextStyle(
-                        color: widget.isMe
-                            ? Theme.of(context).colorScheme.onSurface
-                            : Theme.of(context).colorScheme.onSurface,
-                        fontWeight: FontWeight.w500,
+            child: Icon(
+              _isPlaying ? Icons.pause : Icons.play_arrow,
+              color: textColor,
+              size: 24,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 160,
+          child: _isInitialized
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (widget.showFileName)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          widget.fileName,
+                          style: TextStyle(
+                            color: textColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  if (_isInitialized) ...[
-                    const SizedBox(height: 4),
-                    SliderTheme(
-                      data: SliderThemeData(
-                        trackHeight: 4,
-                        thumbShape: const RoundSliderThumbShape(
-                          enabledThumbRadius: 6,
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapDown: (details) {
+                        if (!_isInitialized) return;
+                        final ratio = (details.localPosition.dx / 160.0).clamp(0.0, 1.0);
+                        _audioPlayer.seek(
+                          Duration(milliseconds: (_duration.inMilliseconds * ratio).toInt()),
+                        );
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          value: _duration.inMilliseconds > 0
+                              ? (_position.inMilliseconds / _duration.inMilliseconds)
+                                  .clamp(0.0, 1.0)
+                              : 0,
+                          backgroundColor: dimColor.withValues(alpha: 0.25),
+                          color: accentColor,
+                          minHeight: 8,
                         ),
-                        overlayShape: const RoundSliderOverlayShape(
-                          overlayRadius: 12,
-                        ),
-                        activeTrackColor: widget.isMe
-                            ? Theme.of(context).colorScheme.onSurface
-                            : Theme.of(context).colorScheme.primary,
-                        inactiveTrackColor: widget.isMe
-                            ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3)
-                            : Theme.of(context).colorScheme.outline,
-                        thumbColor: widget.isMe
-                            ? Theme.of(context).colorScheme.onSurface
-                            : Theme.of(context).colorScheme.primary,
-                      ),
-                      child: Slider(
-                        value: _position.inMilliseconds.toDouble().clamp(
-                          0,
-                          _duration.inMilliseconds.toDouble(),
-                        ),
-                        min: 0,
-                        max: _duration.inMilliseconds.toDouble().clamp(
-                          1,
-                          double.infinity,
-                        ),
-                        onChanged: (value) {
-                          _audioPlayer.seek(
-                            Duration(milliseconds: value.toInt()),
-                          );
-                        },
                       ),
                     ),
+                    const SizedBox(height: 2),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
                           _formatDuration(_position),
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: widget.isMe
-                                ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                                : Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                          ),
+                          style: TextStyle(fontSize: 10, color: dimColor),
+                        ),
+                        Text(
+                          ' / ',
+                          style: TextStyle(fontSize: 10, color: dimColor),
                         ),
                         Text(
                           _formatDuration(_duration),
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: widget.isMe
-                                ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                                : Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                          ),
+                          style: TextStyle(fontSize: 10, color: dimColor),
                         ),
                       ],
                     ),
-                  ] else
-                    const Padding(
-                      padding: EdgeInsets.only(top: 4),
-                      child: SizedBox(
-                        height: 4,
-                        child: LinearProgressIndicator(),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
+                  ],
+                )
+              : const SizedBox(
+                  height: 4,
+                  child: LinearProgressIndicator(),
+                ),
         ),
       ],
     );
