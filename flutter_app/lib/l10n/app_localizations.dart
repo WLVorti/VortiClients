@@ -108,6 +108,7 @@ class AppLocalizations {
   String get failedToLoadMessages => isRu ? 'Не удалось загрузить сообщения' : 'Failed to load messages';
   String get deleteChat => isRu ? 'Удалить чат' : 'Delete chat';
   String get deleteChatConfirm => isRu ? 'Удалить этот чат?' : 'Delete this chat?';
+  String get deleteChatLocalOnly => isRu ? 'Чат будет удалён только у вас. Это действие нельзя отменить.' : 'The chat will be deleted only for you. This action cannot be undone.';
   String get deleteGroup => isRu ? 'Удалить группу' : 'Delete group';
   String get leaveGroup => isRu ? 'Покинуть группу' : 'Leave group';
   String get addMember => isRu ? 'Добавить участника' : 'Add member';
@@ -195,6 +196,12 @@ class AppLocalizations {
   String get errorTakingPhoto => isRu ? 'Ошибка съёмки фото' : 'Error taking photo';
   String get storagePermissionRequired => isRu ? 'Требуется разрешение на доступ к галерее' : 'Storage permission is required to access gallery';
   String get errorSelectingFile => isRu ? 'Ошибка выбора файла' : 'Error selecting file';
+
+  String get media => isRu ? 'Медиа' : 'Media';
+  String get files => isRu ? 'Файлы' : 'Files';
+  String get music => isRu ? 'Музыка' : 'Music';
+  String get noMedia => isRu ? 'Нет медиафайлов' : 'No media';
+  String get selected => isRu ? 'выбрано' : 'selected';
   String get e2eeLabel => isRu ? '🔒 E2EE' : '🔒 E2EE';
   String get failedToStartRecording => isRu ? 'Не удалось начать запись' : 'Failed to start recording';
 
@@ -237,6 +244,8 @@ class AppLocalizations {
   String get monthsOct => isRu ? 'окт' : 'Oct';
   String get monthsNov => isRu ? 'ноя' : 'Nov';
   String get monthsDec => isRu ? 'дек' : 'Dec';
+  String get today => isRu ? 'Сегодня' : 'Today';
+  String get yesterday => isRu ? 'Вчера' : 'Yesterday';
   String formatDate(int timestamp) {
     if (timestamp == 0) return unknown;
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);

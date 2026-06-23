@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/chat_cache.dart';
+import '../services/hidden_chats.dart';
 import '../services/mute_service.dart';
 import '../services/theme_provider.dart';
 import '../l10n/app_localizations.dart';
@@ -96,10 +98,24 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
   bool _isSearching = false;
   Timer? _searchTimer;
 
+  List<Chat> _filterChats(List<Chat> chats) {
+    return chats.where((c) =>
+      c.type == 'direct' &&
+      c.lastMessage != null &&
+      c.lastMessage!.isNotEmpty &&
+      !HiddenChats.isHidden(c.id)
+    ).toList();
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    final cached = ChatCache.getChats();
+    if (cached.isNotEmpty) {
+      _chats = _filterChats(cached);
+      _isLoading = false;
+    }
     _loadData();
     _setupWebSocket();
   }
@@ -131,9 +147,10 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
   Future<void> _loadData() async {
     try {
       final chats = await widget.api.getChats();
+      await ChatCache.saveChats(chats);
       if (mounted) {
         setState(() {
-          _chats = chats.where((c) => c.type == 'direct').toList();
+          _chats = _filterChats(chats);
           _isLoading = false;
         });
 
@@ -608,6 +625,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                                     otherUserId: otherUserId,
                                     initialOnline: chat.isOnline || _onlineUsers.contains(otherUserId),
                                   ),
+                                  onLongPress: () => _showChatMenu(chat, context),
                                 );
                               },
                             ),
@@ -618,6 +636,56 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
       floatingActionButton: FloatingActionButton(
         onPressed: _createChat,
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  void _showChatMenu(Chat chat, BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
+              title: Text(l10n.deleteChat, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDeleteChat(chat, context);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmDeleteChat(Chat chat, BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppLocalizations.of(context).deleteChat),
+        content: Text('${AppLocalizations.of(context).deleteChatConfirm}\n\n${AppLocalizations.of(context).deleteChatLocalOnly}'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppLocalizations.of(context).cancel)),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await HiddenChats.hide(chat.id);
+              final cached = ChatCache.getChats();
+              cached.removeWhere((c) => c.id == chat.id);
+              await ChatCache.saveChats(cached);
+              if (mounted) {
+                setState(() {
+                  _chats.removeWhere((c) => c.id == chat.id);
+                });
+              }
+            },
+            child: Text(AppLocalizations.of(context).delete, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ),
+        ],
       ),
     );
   }

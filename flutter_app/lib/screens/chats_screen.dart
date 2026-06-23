@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
+import '../services/chat_cache.dart';
 import '../services/mute_service.dart';
 import '../models/models.dart';
 import '../utils/avatar_utils.dart';
@@ -28,6 +29,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
   @override
   void initState() {
     super.initState();
+    final cached = ChatCache.getChats();
+    if (cached.isNotEmpty) {
+      _chats = cached;
+      _isLoading = false;
+    }
     _loadData();
     _setupWebSocket();
   }
@@ -46,6 +52,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
           _isLoading = false;
         });
         print('[ChatsScreen] _chats set with ${_chats.length} items');
+        // Cache the fresh data
+        ChatCache.saveChats(chats);
 
         // Загружаем счётчики непрочитанных
         final unread = await widget.api.getUnreadCounts();

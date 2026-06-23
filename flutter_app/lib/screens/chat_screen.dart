@@ -13,6 +13,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
+import '../widgets/attachment_picker_widget.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/avatar_utils.dart';
@@ -941,57 +942,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _showAttachmentOptions() {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: Text(AppLocalizations.of(context).gallery),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickMedia(ImageSource.gallery);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.video_library),
-              title: Text(AppLocalizations.of(context).videoLabel),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickVideoFromGallery();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: Text(AppLocalizations.of(context).camera),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickMedia(ImageSource.camera);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.videocam),
-              title: Text(AppLocalizations.of(context).recordVideo),
-              onTap: () {
-                Navigator.pop(ctx);
-                _recordVideo();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.attach_file),
-              title: Text(AppLocalizations.of(context).file),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickFile();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+  void _showAttachmentOptions() async {
+    final results = await AttachmentPickerWidget.show(context);
+    if (results == null || !mounted) return;
+    for (final media in results) {
+      if (!mounted) break;
+      try {
+        final fileSize = await media.file.length();
+        if (fileSize > 100 * 1024 * 1024) {
+          _showSnackBar(AppLocalizations.of(context).fileTooLarge);
+          continue;
+        }
+        final useChunked = media.mimeType.startsWith('video/') && fileSize > 5 * 1024 * 1024;
+        final api = widget.api;
+        final uploadResult = useChunked
+            ? await api.uploadFileChunked(media.file,
+                onProgress: (p) {})
+            : await api.uploadFile(media.file);
+        if (uploadResult != null) {
+          api.sendFile(widget.chatId, uploadResult['fileId']!, mimeType: uploadResult['mimeType']);
+        }
+      } catch (_) {
+        _showSnackBar(AppLocalizations.of(context).uploadFailed);
+      }
+    }
   }
 
   Future<void> _pickVideoFromGallery() async {
@@ -1365,9 +1339,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             controller: _scrollController,
                             reverse: true,
                             padding: const EdgeInsets.all(8),
-                            itemCount: _messages.length,
+                            itemCount: _displayItems.length,
                             itemBuilder: (_, i) {
-                              final msg = _messages[_messages.length - 1 - i];
+                              final item = _displayItems[_displayItems.length - 1 - i];
+                              if (item is String) {
+                                return _buildDateSeparator(item);
+                              }
+                              final msg = item as Message;
                               final child = _buildMessage(msg);
                               if (msg.isDeleted || msg.text == '[deleted]') {
                                 return KeyedSubtree(key: ValueKey(msg.id), child: child);
@@ -2288,6 +2266,58 @@ color: isMe ? myTextColor : theirTextColor,
     final min = (_recordingSeconds ~/ 60).toString().padLeft(2, '0');
     final sec = (_recordingSeconds % 60).toString().padLeft(2, '0');
     return '$min:$sec';
+  }
+
+  List<Object> get _displayItems {
+    final items = <Object>[];
+    String? lastDate;
+    for (final msg in _messages) {
+      final d = _messageDateStr(msg.createdAt);
+      if (d != lastDate) {
+        items.add(d);
+        lastDate = d;
+      }
+      items.add(msg);
+    }
+    return items;
+  }
+
+  String _messageDateStr(int ts) {
+    final now = DateTime.now();
+    final date = DateTime.fromMillisecondsSinceEpoch(ts);
+    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+      final l10n = AppLocalizations.of(context);
+      return l10n.today;
+    }
+    final yesterday = now.subtract(const Duration(days: 1));
+    if (date.year == yesterday.year && date.month == yesterday.month && date.day == yesterday.day) {
+      final l10n = AppLocalizations.of(context);
+      return l10n.yesterday;
+    }
+    final l10n = AppLocalizations.of(context);
+    return l10n.formatDate(ts);
+  }
+
+  Widget _buildDateSeparator(String text) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(text,
+            style: TextStyle(
+              fontSize: 12,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

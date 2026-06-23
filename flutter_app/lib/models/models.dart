@@ -164,6 +164,20 @@ class Chat {
       isOnline: json['is_online'] ?? false,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'type': type,
+    'created_at': createdAt,
+    'last_message': lastMessage,
+    'last_message_at': lastMessageAt,
+    'last_message_key_type': lastMessageKeyType,
+    'participants': participants,
+    'unread_count': unreadCount,
+    'avatarUrl': avatarUrl,
+    'is_online': isOnline,
+  };
 }
 
 enum MessageStatus { sending, sent, delivered, read }

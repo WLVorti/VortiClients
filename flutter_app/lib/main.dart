@@ -9,6 +9,8 @@ import 'services/locale_provider.dart';
 import 'services/notification_service.dart';
 import 'services/mute_service.dart';
 import 'services/message_cache.dart';
+import 'services/chat_cache.dart';
+import 'services/hidden_chats.dart';
 import 'services/crypto_service.dart';
 import 'services/wallpaper_service.dart';
 import 'services/deep_link_service.dart';
@@ -26,6 +28,8 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   await MessageCache.init();
+  await ChatCache.init();
+  await HiddenChats.init();
   await CryptoService.init();
 
   runApp(const VortiApp());
