@@ -102,13 +102,16 @@ class ThemeColors {
   );
 }
 
-double _yiqBrightness(int r, int g, int b) => (r * 299 + g * 587 + b * 114) / 1000;
+double _yiqBrightness(int r, int g, int b) =>
+    (r * 299 + g * 587 + b * 114) / 1000;
 
 Color _contrastOnPrimary(Color primary) {
   final r = (primary.r * 255).round();
   final g = (primary.g * 255).round();
   final b = (primary.b * 255).round();
-  return _yiqBrightness(r, g, b) >= 140 ? const Color(0xFF11141A) : Colors.white;
+  return _yiqBrightness(r, g, b) >= 140
+      ? const Color(0xFF11141A)
+      : Colors.white;
 }
 
 class ThemeProvider extends ChangeNotifier {
@@ -125,12 +128,12 @@ class ThemeProvider extends ChangeNotifier {
   static final ThemeProvider _instance = ThemeProvider._internal();
   factory ThemeProvider() => _instance;
   ThemeProvider._internal();
-  
+
   String? _currentUserId;
   ThemeMode _themeMode = ThemeMode.system;
   String _themeId = 'light_blue';
   ThemeColors _customColors = ThemeColors.defaultLight;
-  
+
   ThemeMode get themeMode => _themeMode;
   String get themeId => _themeId;
   ThemeColors get colors => _customColors;
@@ -140,24 +143,24 @@ class ThemeProvider extends ChangeNotifier {
   Color get surfaceColor => _customColors.surface;
   Color get textColor => _customColors.text;
   Color get textSecondaryColor => _customColors.textSecondary;
-  
+
   bool get isDarkMode => _themeMode == ThemeMode.dark;
   String getCurrentThemeId() => _themeId;
   bool get isCustom => _themeId == 'custom';
-  
+
   void setCurrentUser(String? userId) {
     _currentUserId = userId;
   }
-  
+
   String _getKey(String baseKey) {
     if (_currentUserId == null) return baseKey;
     return '${baseKey}_${_currentUserId}';
   }
-  
+
   static Future<void> resetTheme() async {
     final instance = _instance;
-    await _storage.delete(key: '${_themeKeyPrefix}_${instance._currentUserId}');
-    await _storage.delete(key: '${_themeIdPrefix}_${instance._currentUserId}');
+    await _storage.delete(key: instance._getKey(_themeKeyPrefix));
+    await _storage.delete(key: instance._getKey(_themeIdPrefix));
     await _storage.delete(key: instance._getKey(_customPrimaryKey));
     await _storage.delete(key: instance._getKey(_customSecondaryKey));
     await _storage.delete(key: instance._getKey(_customBackgroundKey));
@@ -169,16 +172,16 @@ class ThemeProvider extends ChangeNotifier {
     instance._customColors = ThemeColors.defaultLight;
     instance.notifyListeners();
   }
-  
+
   Future<void> loadTheme() async {
     final modeKey = _getKey(_themeKeyPrefix);
     final idKey = _getKey(_themeIdPrefix);
-    
+
     final modeValue = await _storage.read(key: modeKey);
     if (modeValue != null) {
       _themeMode = modeValue == 'dark' ? ThemeMode.dark : ThemeMode.light;
-      _customColors = _themeMode == ThemeMode.dark 
-          ? ThemeColors.defaultDark 
+      _customColors = _themeMode == ThemeMode.dark
+          ? ThemeColors.defaultDark
           : ThemeColors.defaultLight;
     } else {
       // Fallback to default theme
@@ -186,7 +189,7 @@ class ThemeProvider extends ChangeNotifier {
       _themeId = 'light_blue';
       _applyPreset('light_blue');
     }
-    
+
     final idValue = await _storage.read(key: idKey);
     if (idValue != null) {
       _themeId = idValue;
@@ -198,7 +201,7 @@ class ThemeProvider extends ChangeNotifier {
     }
     notifyListeners();
   }
-  
+
   Future<void> _loadCustomColors() async {
     final primaryKey = _getKey(_customPrimaryKey);
     final secondaryKey = _getKey(_customSecondaryKey);
@@ -206,24 +209,38 @@ class ThemeProvider extends ChangeNotifier {
     final surfaceKey = _getKey(_customSurfaceKey);
     final textKey = _getKey(_customTextKey);
     final textSecondaryKey = _getKey(_customSecondaryTextKey);
-    
+
     final primary = await _storage.read(key: primaryKey);
     final secondary = await _storage.read(key: secondaryKey);
     final background = await _storage.read(key: backgroundKey);
     final surface = await _storage.read(key: surfaceKey);
     final text = await _storage.read(key: textKey);
     final textSecondary = await _storage.read(key: textSecondaryKey);
-    
+
     _customColors = ThemeColors(
-      primary: primary != null ? Color(int.parse(primary)) : _customColors.primary,
-      secondary: secondary != null ? Color(int.parse(secondary)) : _customColors.secondary,
-      background: background != null ? Color(int.parse(background)) : _customColors.background,
-      surface: surface != null ? Color(int.parse(surface)) : _customColors.surface,
-      text: text != null ? Color(int.parse(text)) : _customColors.text,
-      textSecondary: textSecondary != null ? Color(int.parse(textSecondary)) : _customColors.textSecondary,
+      primary: primary != null
+          ? Color(int.tryParse(primary) ?? _customColors.primary.value)
+          : _customColors.primary,
+      secondary: secondary != null
+          ? Color(int.tryParse(secondary) ?? _customColors.secondary.value)
+          : _customColors.secondary,
+      background: background != null
+          ? Color(int.tryParse(background) ?? _customColors.background.value)
+          : _customColors.background,
+      surface: surface != null
+          ? Color(int.tryParse(surface) ?? _customColors.surface.value)
+          : _customColors.surface,
+      text: text != null
+          ? Color(int.tryParse(text) ?? _customColors.text.value)
+          : _customColors.text,
+      textSecondary: textSecondary != null
+          ? Color(
+              int.tryParse(textSecondary) ?? _customColors.textSecondary.value,
+            )
+          : _customColors.textSecondary,
     );
   }
-    
+
   void _applyPreset(String id) {
     final preset = AppTheme.presets.firstWhere(
       (t) => t.id == id,
@@ -238,7 +255,7 @@ class ThemeProvider extends ChangeNotifier {
       textSecondary: preset.onBackgroundColor.withValues(alpha: 0.7),
     );
   }
-  
+
   Future<void> applyPreset(String id) async {
     final idKey = _getKey(_themeIdPrefix);
     await _storage.write(key: idKey, value: id);
@@ -246,24 +263,29 @@ class ThemeProvider extends ChangeNotifier {
     _applyPreset(id);
     notifyListeners();
   }
-  
+
   Future<void> setThemeMode(ThemeMode mode) async {
     final modeKey = _getKey(_themeKeyPrefix);
-    await _storage.write(key: modeKey, value: mode == ThemeMode.dark ? 'dark' : 'light');
+    await _storage.write(
+      key: modeKey,
+      value: mode == ThemeMode.dark ? 'dark' : 'light',
+    );
     _themeMode = mode;
     notifyListeners();
   }
-  
+
   Future<void> toggleThemeMode() async {
-    final newMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    final newMode = _themeMode == ThemeMode.dark
+        ? ThemeMode.light
+        : ThemeMode.dark;
     await setThemeMode(newMode);
   }
-  
+
   Future<void> setCustomColor(String key, Color color) async {
     _themeId = 'custom';
     final idKey = _getKey(_themeIdPrefix);
     await _storage.write(key: idKey, value: 'custom');
-    
+
     String storageKey;
     switch (key) {
       case 'primary':
@@ -287,7 +309,7 @@ class ThemeProvider extends ChangeNotifier {
       default:
         return;
     }
-    
+
     switch (key) {
       case 'primary':
         _customColors = ThemeColors(
@@ -351,15 +373,33 @@ class ThemeProvider extends ChangeNotifier {
         break;
     }
     await _storage.write(key: storageKey, value: color.value.toString());
-    await _storage.write(key: _getKey(_customPrimaryKey), value: _customColors.primary.value.toString());
-    await _storage.write(key: _getKey(_customSecondaryKey), value: _customColors.secondary.value.toString());
-    await _storage.write(key: _getKey(_customBackgroundKey), value: _customColors.background.value.toString());
-    await _storage.write(key: _getKey(_customSurfaceKey), value: _customColors.surface.value.toString());
-    await _storage.write(key: _getKey(_customTextKey), value: _customColors.text.value.toString());
-    await _storage.write(key: _getKey(_customSecondaryTextKey), value: _customColors.textSecondary.value.toString());
+    await _storage.write(
+      key: _getKey(_customPrimaryKey),
+      value: _customColors.primary.value.toString(),
+    );
+    await _storage.write(
+      key: _getKey(_customSecondaryKey),
+      value: _customColors.secondary.value.toString(),
+    );
+    await _storage.write(
+      key: _getKey(_customBackgroundKey),
+      value: _customColors.background.value.toString(),
+    );
+    await _storage.write(
+      key: _getKey(_customSurfaceKey),
+      value: _customColors.surface.value.toString(),
+    );
+    await _storage.write(
+      key: _getKey(_customTextKey),
+      value: _customColors.text.value.toString(),
+    );
+    await _storage.write(
+      key: _getKey(_customSecondaryTextKey),
+      value: _customColors.textSecondary.value.toString(),
+    );
     notifyListeners();
   }
-  
+
   Future<void> setCustomTheme(
     Color primary,
     Color secondary,
@@ -377,7 +417,7 @@ class ThemeProvider extends ChangeNotifier {
       text: text,
       textSecondary: textSecondary,
     );
-    
+
     final idKey = _getKey(_themeIdPrefix);
     final primaryKey = _getKey(_customPrimaryKey);
     final secondaryKey = _getKey(_customSecondaryKey);
@@ -385,38 +425,46 @@ class ThemeProvider extends ChangeNotifier {
     final surfaceKey = _getKey(_customSurfaceKey);
     final textKey = _getKey(_customTextKey);
     final textSecondaryKey = _getKey(_customSecondaryTextKey);
-    
+
     await _storage.write(key: idKey, value: 'custom');
     await _storage.write(key: primaryKey, value: primary.value.toString());
     await _storage.write(key: secondaryKey, value: secondary.value.toString());
-    await _storage.write(key: backgroundKey, value: background.value.toString());
+    await _storage.write(
+      key: backgroundKey,
+      value: background.value.toString(),
+    );
     await _storage.write(key: surfaceKey, value: surface.value.toString());
     await _storage.write(key: textKey, value: text.value.toString());
-    await _storage.write(key: textSecondaryKey, value: textSecondary.value.toString());
+    await _storage.write(
+      key: textSecondaryKey,
+      value: textSecondary.value.toString(),
+    );
     notifyListeners();
   }
-  
-  ThemeData getThemeData() {
+
+  ThemeData getThemeData({Brightness? brightness}) {
     final colors = _customColors;
-    final isDark = _themeMode == ThemeMode.dark;
-    final brightness = isDark ? Brightness.dark : Brightness.light;
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: colors.primary,
-      brightness: brightness,
-    ).copyWith(
-      primary: colors.primary,
-      onPrimary: _contrastOnPrimary(colors.primary),
-      surface: colors.surface,
-      background: colors.background,
-      onSurface: colors.text,
-      onSurfaceVariant: colors.textSecondary,
-      surfaceContainer: colors.surface,
-      surfaceContainerHigh: colors.surface,
-      surfaceContainerHighest: colors.surface,
-    );
+    final isDark =
+        brightness == Brightness.dark ||
+        (brightness == null && _themeMode == ThemeMode.dark);
+    final b = isDark ? Brightness.dark : Brightness.light;
+    final colorScheme =
+        ColorScheme.fromSeed(seedColor: colors.primary, brightness: b).copyWith(
+          primary: colors.primary,
+          onPrimary: _contrastOnPrimary(colors.primary),
+          secondary: colors.secondary,
+          onSecondary: _contrastOnPrimary(colors.secondary),
+          surface: colors.surface,
+          background: colors.background,
+          onSurface: colors.text,
+          onSurfaceVariant: colors.textSecondary,
+          surfaceContainer: colors.surface,
+          surfaceContainerHigh: colors.surface,
+          surfaceContainerHighest: colors.surface,
+        );
     return ThemeData(
       useMaterial3: true,
-      brightness: brightness,
+      brightness: b,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: colors.background,
       appBarTheme: AppBarTheme(
@@ -444,17 +492,13 @@ class ThemeProvider extends ChangeNotifier {
         style: ElevatedButton.styleFrom(
           backgroundColor: colors.primary,
           foregroundColor: isDark ? Colors.white : Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
       cardTheme: CardThemeData(
         color: colors.surface,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: colors.surface,
@@ -467,7 +511,11 @@ class ThemeProvider extends ChangeNotifier {
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return TextStyle(color: colors.primary, fontSize: 12, fontWeight: FontWeight.w500);
+            return TextStyle(
+              color: colors.primary,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            );
           }
           return TextStyle(color: colors.textSecondary, fontSize: 12);
         }),

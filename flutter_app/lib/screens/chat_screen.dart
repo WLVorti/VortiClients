@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -77,6 +78,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   late final String _currentUserId;
   final Set<String> _readMessages = {};
   final Map<String, int> _decryptRetries = {};
+  bool _showScrollDownButton = false;
   Timer? _draftDebounce;
   Timer? _readDebounce;
   final Set<String> _pendingReadIds = {};
@@ -137,12 +139,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
-    if (_isLoadingMore || !_hasOlderMessages) return;
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+    if (!_isLoadingMore &&
+        _hasOlderMessages &&
+        _scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200) {
       _loadMoreMessages();
     }
     if (_isNearBottom && _pendingReadIds.isNotEmpty) {
       _flushReadReceipts();
+    }
+    final show = !_isNearBottom;
+    if (show != _showScrollDownButton) {
+      setState(() => _showScrollDownButton = show);
     }
   }
 
@@ -185,7 +193,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       widget.api.reconnectWebSocket();
       _refreshMessageStatus();
     }
-    
+
     if (state == AppLifecycleState.paused) {
       _isAppActive = false;
       _readDebounce?.cancel();
@@ -199,7 +207,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     super.didChangeDependencies();
     if (widget.otherUserId != null) {
       setState(() {
-        _isOtherOnline = widget.api.isUserOnline(widget.otherUserId!) || widget.initialOnline;
+        _isOtherOnline =
+            widget.api.isUserOnline(widget.otherUserId!) ||
+            widget.initialOnline;
       });
     }
   }
@@ -285,14 +295,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
           final uploadResult = await widget.api.uploadFile(file);
           if (uploadResult != null) {
-            ApiService.addLog('_stopRecording: uploadFile succeeded fileId=${uploadResult['fileId']} path=$path');
+            ApiService.addLog(
+              '_stopRecording: uploadFile succeeded fileId=${uploadResult['fileId']} path=$path',
+            );
             widget.api.sendFile(
               widget.chatId,
               uploadResult['fileId']!,
               mimeType: uploadResult['mimeType'],
             );
           } else {
-            ApiService.addLog('_stopRecording: uploadFile returned null for path=$path');
+            ApiService.addLog(
+              '_stopRecording: uploadFile returned null for path=$path',
+            );
             _showSnackBar('Upload failed');
           }
 
@@ -309,9 +323,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _decryptMessage(Message msg) {
-    if (msg.keyType != 'e2ee_v1' || msg.text.isEmpty || _decryptedTexts.containsKey(msg.id) || msg.plainText != null) return;
+    if (msg.keyType != 'e2ee_v1' ||
+        msg.text.isEmpty ||
+        _decryptedTexts.containsKey(msg.id) ||
+        msg.plainText != null)
+      return;
     try {
-      final otherId = widget.otherUserId ?? (widget.chatType == 'group' ? msg.userId : null);
+      final otherId =
+          widget.otherUserId ??
+          (widget.chatType == 'group' ? msg.userId : null);
       if (otherId == null || otherId == _currentUserId) return;
       CryptoService.getBox(otherId, widget.api).then((box) {
         if (box == null) {
@@ -365,7 +385,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         break;
       case 'online_users':
         if (widget.otherUserId != null) {
-          setState(() => _isOtherOnline = widget.api.isUserOnline(widget.otherUserId!));
+          setState(
+            () => _isOtherOnline = widget.api.isUserOnline(widget.otherUserId!),
+          );
         }
         break;
       case 'delivered':
@@ -375,7 +397,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         if (msg['userId'] != _currentUserId) _handleReadReceipt(msg);
         break;
       case 'typing':
-        if (msg['chatId'] == widget.chatId && msg['userId'] != _currentUserId) _handleTyping(msg);
+        if (msg['chatId'] == widget.chatId && msg['userId'] != _currentUserId)
+          _handleTyping(msg);
         break;
     }
   }
@@ -401,7 +424,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     if (!mounted) return;
 
-    debugPrint('[_handleNewMessage] ABOUT TO setState messageId=$messageId tempId=$tempId messages.len=${_messages.length}');
+    debugPrint(
+      '[_handleNewMessage] ABOUT TO setState messageId=$messageId tempId=$tempId messages.len=${_messages.length}',
+    );
     setState(() {
       // 1) Remove any existing copy by tempId OR real messageId (dedup)
       if (tempId != null) {
@@ -411,13 +436,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
       // 2) If own message without tempId (e.g. offline sync), find + remove pending optimistic
       if (userId == _currentUserId && tempId == null) {
-        final optimisticIdx = _messages.indexWhere((m) =>
-          m.userId == _currentUserId &&
-          m.status == MessageStatus.sending &&
-          (message.createdAt - m.createdAt).abs() < 15000);
+        final optimisticIdx = _messages.indexWhere(
+          (m) =>
+              m.userId == _currentUserId &&
+              m.status == MessageStatus.sending &&
+              (message.createdAt - m.createdAt).abs() < 15000,
+        );
         if (optimisticIdx != -1) {
           if (_decryptedTexts.containsKey(_messages[optimisticIdx].id)) {
-            _decryptedTexts[messageId] = _decryptedTexts[_messages[optimisticIdx].id]!;
+            _decryptedTexts[messageId] =
+                _decryptedTexts[_messages[optimisticIdx].id]!;
             _decryptedTexts.remove(_messages[optimisticIdx].id);
           }
           _messages.removeAt(optimisticIdx);
@@ -481,7 +509,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final errorMsg = msg['message'] as String? ?? 'Ошибка отправки';
     final failedTempId = msg['tempId'] as String?;
 
-    ApiService.addLog('_handleErrorMessage: chatId=${widget.chatId} tempId=$failedTempId error=$errorMsg');
+    ApiService.addLog(
+      '_handleErrorMessage: chatId=${widget.chatId} tempId=$failedTempId error=$errorMsg',
+    );
 
     if (failedTempId != null && mounted) {
       // Remove failed optimistic message from UI
@@ -498,7 +528,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             _replyToMessageId = failedReplyTo;
             final reply = _messages.firstWhere(
               (m) => m.id == failedReplyTo,
-              orElse: () => Message(id: '', chatId: '', userId: '', text: '', createdAt: 0),
+              orElse: () => Message(
+                id: '',
+                chatId: '',
+                userId: '',
+                text: '',
+                createdAt: 0,
+              ),
             );
             _replyToMessage = reply.id.isNotEmpty ? reply : null;
           });
@@ -522,7 +558,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
     if (index != -1) {
       setState(() {
-        _messages[index] = _messages[index].copyWith(status: MessageStatus.delivered);
+        _messages[index] = _messages[index].copyWith(
+          status: MessageStatus.delivered,
+        );
       });
       MessageCache.saveMessage(_messages[index]);
     }
@@ -535,7 +573,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
     if (index != -1) {
       setState(() {
-        _messages[index] = _messages[index].copyWith(status: MessageStatus.read);
+        _messages[index] = _messages[index].copyWith(
+          status: MessageStatus.read,
+        );
       });
       MessageCache.saveMessage(_messages[index]);
     }
@@ -560,13 +600,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           final now = DateTime.now().millisecondsSinceEpoch;
           for (final m in messages) {
             // Skip own messages that still have a pending optimistic counterpart
-            if (m.userId == _currentUserId && _messages.any((o) =>
-              o.userId == _currentUserId &&
-              o.status == MessageStatus.sending &&
-              o.text == m.text &&
-              (now - o.createdAt).abs() < 10000)) continue;
+            if (m.userId == _currentUserId &&
+                _messages.any(
+                  (o) =>
+                      o.userId == _currentUserId &&
+                      o.status == MessageStatus.sending &&
+                      o.text == m.text &&
+                      (now - o.createdAt).abs() < 10000,
+                ))
+              continue;
 
-            final index = _messages.indexWhere((existing) => existing.id == m.id);
+            final index = _messages.indexWhere(
+              (existing) => existing.id == m.id,
+            );
             if (index != -1) {
               if (m.status.index > _messages[index].status.index) {
                 _messages[index] = _messages[index].copyWith(status: m.status);
@@ -616,11 +662,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final now = DateTime.now().millisecondsSinceEpoch;
       for (final m in messages) {
         // Skip own messages that still have a pending optimistic counterpart
-        if (m.userId == _currentUserId && _messages.any((o) =>
-          o.userId == _currentUserId &&
-          o.status == MessageStatus.sending &&
-          o.text == m.text &&
-          (now - o.createdAt).abs() < 10000)) continue;
+        if (m.userId == _currentUserId &&
+            _messages.any(
+              (o) =>
+                  o.userId == _currentUserId &&
+                  o.status == MessageStatus.sending &&
+                  o.text == m.text &&
+                  (now - o.createdAt).abs() < 10000,
+            ))
+          continue;
 
         final index = _messages.indexWhere((existing) => existing.id == m.id);
         if (index != -1) {
@@ -665,7 +715,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _isLoadingMore = true;
     final oldest = _messages.isEmpty ? null : _messages.first.createdAt;
     try {
-      final messages = await widget.api.getMessages(widget.chatId, before: oldest, limit: 50);
+      final messages = await widget.api.getMessages(
+        widget.chatId,
+        before: oldest,
+        limit: 50,
+      );
       final toInsert = <Message>[];
       for (final m in messages) {
         if (!_messages.any((existing) => existing.id == m.id)) {
@@ -695,7 +749,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final participants = await widget.api.getParticipants(widget.chatId);
       if (mounted) {
         for (final p in participants) {
-          _participantNames[p['user_id'] as String] = p['username'] as String? ?? 'Unknown';
+          _participantNames[p['user_id'] as String] =
+              p['username'] as String? ?? 'Unknown';
         }
         setState(() {});
       }
@@ -715,20 +770,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => UserProfileScreen(
-            api: widget.api,
-            userId: widget.otherUserId!,
-          ),
+          builder: (_) =>
+              UserProfileScreen(api: widget.api, userId: widget.otherUserId!),
         ),
       );
     } else {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => GroupInfoScreen(
-            api: widget.api,
-            chatId: widget.chatId,
-          ),
+          builder: (_) =>
+              GroupInfoScreen(api: widget.api, chatId: widget.chatId),
         ),
       );
     }
@@ -773,16 +824,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           setState(() => _isUploading = false);
           return;
         }
-        final useChunked = _pendingFileMimeType != null && _pendingFileMimeType!.startsWith('video/') && fileSize > 5 * 1024 * 1024;
+        final useChunked =
+            _pendingFileMimeType != null &&
+            _pendingFileMimeType!.startsWith('video/') &&
+            fileSize > 5 * 1024 * 1024;
         final l = AppLocalizations.of(context);
         final uploadResult = useChunked
-          ? await widget.api.uploadFileChunked(_pendingFile!,
-              onProgress: (p) => setState(() {
-                _uploadProgress = p;
-                _uploadStatus = l.uploadProgress((p * 100).toStringAsFixed(0), sizeMb);
-              }),
-            )
-          : await widget.api.uploadFile(_pendingFile!);
+            ? await widget.api.uploadFileChunked(
+                _pendingFile!,
+                onProgress: (p) => setState(() {
+                  _uploadProgress = p;
+                  _uploadStatus = l.uploadProgress(
+                    (p * 100).toStringAsFixed(0),
+                    sizeMb,
+                  );
+                }),
+              )
+            : await widget.api.uploadFile(_pendingFile!);
         if (uploadResult != null) {
           setState(() => _uploadStatus = l.sending);
           widget.api.sendFile(
@@ -813,7 +871,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     // Encrypt for direct chats
     String sendText = text;
     String? keyType;
-    if (widget.chatType == 'direct' && widget.otherUserId != null && text.isNotEmpty) {
+    if (widget.chatType == 'direct' &&
+        widget.otherUserId != null &&
+        text.isNotEmpty) {
       try {
         final box = await CryptoService.getBox(widget.otherUserId!, widget.api);
         if (box != null) {
@@ -830,21 +890,29 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     // Add optimistic message to UI
     setState(() {
-      _messages.add(Message(
-        id: tempId,
-        chatId: widget.chatId,
-        userId: _currentUserId,
-        text: keyType == 'e2ee_v1' ? text : sendText,
-        replyTo: replyTo,
-        createdAt: DateTime.now().millisecondsSinceEpoch,
-        status: MessageStatus.sending,
-        keyType: keyType,
-      ));
+      _messages.add(
+        Message(
+          id: tempId,
+          chatId: widget.chatId,
+          userId: _currentUserId,
+          text: keyType == 'e2ee_v1' ? text : sendText,
+          replyTo: replyTo,
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+          status: MessageStatus.sending,
+          keyType: keyType,
+        ),
+      );
     });
     _scrollToBottom(force: true);
 
     // Send via WebSocket with tempId
-    widget.api.sendMessage(widget.chatId, sendText, replyTo: replyTo, tempId: tempId, keyType: keyType);
+    widget.api.sendMessage(
+      widget.chatId,
+      sendText,
+      replyTo: replyTo,
+      tempId: tempId,
+      keyType: keyType,
+    );
 
     // Clear input
     _draftDebounce?.cancel();
@@ -922,7 +990,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(AppLocalizations.of(context).delete, style: const TextStyle(color: Colors.red)),
+            child: Text(
+              AppLocalizations.of(context).delete,
+              style: const TextStyle(color: Colors.red),
+            ),
           ),
         ],
       ),
@@ -953,14 +1024,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _showSnackBar(AppLocalizations.of(context).fileTooLarge);
           continue;
         }
-        final useChunked = media.mimeType.startsWith('video/') && fileSize > 5 * 1024 * 1024;
+        final useChunked =
+            media.mimeType.startsWith('video/') && fileSize > 5 * 1024 * 1024;
         final api = widget.api;
         final uploadResult = useChunked
-            ? await api.uploadFileChunked(media.file,
-                onProgress: (p) {})
+            ? await api.uploadFileChunked(media.file, onProgress: (p) {})
             : await api.uploadFile(media.file);
         if (uploadResult != null) {
-          api.sendFile(widget.chatId, uploadResult['fileId']!, mimeType: uploadResult['mimeType']);
+          api.sendFile(
+            widget.chatId,
+            uploadResult['fileId']!,
+            mimeType: uploadResult['mimeType'],
+          );
         }
       } catch (_) {
         _showSnackBar(AppLocalizations.of(context).uploadFailed);
@@ -977,7 +1052,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         setState(() {
           _pendingFile = file;
           _pendingFileName = picked.name;
-          _pendingFileMimeType = 'video/${picked.path.split('.').last.toLowerCase()}';
+          _pendingFileMimeType =
+              'video/${picked.path.split('.').last.toLowerCase()}';
         });
       }
     } catch (e) {
@@ -998,7 +1074,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         setState(() {
           _pendingFile = file;
           _pendingFileName = picked.name;
-          _pendingFileMimeType = 'video/${picked.path.split('.').last.toLowerCase()}';
+          _pendingFileMimeType =
+              'video/${picked.path.split('.').last.toLowerCase()}';
         });
       }
     } catch (e) {
@@ -1008,7 +1085,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _pickMedia(ImageSource source) async {
     try {
-      if (source == ImageSource.gallery && await _requestGalleryPermission() == false) return;
+      if (source == ImageSource.gallery &&
+          await _requestGalleryPermission() == false)
+        return;
       if (source == ImageSource.camera) {
         final status = await Permission.camera.request();
         if (status.isDenied || status.isPermanentlyDenied) {
@@ -1016,7 +1095,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           return;
         }
       }
-      final picked = await ImagePicker().pickImage(source: source, imageQuality: 85);
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 85,
+      );
       if (picked != null) {
         final file = File(picked.path);
         final ext = picked.path.split('.').last.toLowerCase();
@@ -1062,7 +1144,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final file = File(result.files.single.path!);
         final ext = result.files.single.path!.split('.').last.toLowerCase();
         final mimeType = _getPreviewMimeType(ext);
-        final compressed = mimeType.startsWith('image/') ? await _compressImage(file) : null;
+        final compressed = mimeType.startsWith('image/')
+            ? await _compressImage(file)
+            : null;
         setState(() {
           _pendingFile = compressed ?? file;
           _pendingFileName = result.files.single.name;
@@ -1076,12 +1160,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   String _getPreviewMimeType(String ext) {
     switch (ext) {
-      case 'jpg': case 'jpeg': return 'image/jpeg';
-      case 'png': return 'image/png';
-      case 'gif': return 'image/gif';
-      case 'webp': return 'image/webp';
-      case 'mp4': case 'mov': case 'avi': case 'mkv': return 'video/$ext';
-      default: return 'application/octet-stream';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'mp4':
+      case 'mov':
+      case 'avi':
+      case 'mkv':
+        return 'video/$ext';
+      default:
+        return 'application/octet-stream';
     }
   }
 
@@ -1090,14 +1184,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final ext = file.path.split('.').last.toLowerCase();
       if (ext == 'gif' || ext == 'webp') return null;
       final dir = await getTemporaryDirectory();
-      final outPath = '${dir.path}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final outPath =
+          '${dir.path}/${DateTime.now().millisecondsSinceEpoch}.jpg';
       final xfile = await FlutterImageCompress.compressAndGetFile(
-        file.absolute.path, outPath,
+        file.absolute.path,
+        outPath,
         quality: 80,
         minWidth: 1920,
         minHeight: 1920,
       );
-      if (xfile != null && await xfile.length() < await file.length()) return File(xfile.path);
+      if (xfile != null && await xfile.length() < await file.length())
+        return File(xfile.path);
     } catch (_) {}
     return null;
   }
@@ -1144,364 +1241,510 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     debugPrint('[_ChatScreenState.build] messages.len=${_messages.length}');
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
+      extendBodyBehindAppBar: true,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(88),
+        child: Stack(
           children: [
-            GestureDetector(
-              onTap: _navigateToProfileOrGroup,
-              child: Stack(
+            Positioned.fill(
+              child: ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: Container(color: Colors.transparent),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Theme.of(context).colorScheme.surface.withValues(alpha: 0.7),
+                      Theme.of(context).colorScheme.surface.withValues(alpha: 0.0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4, right: 4, bottom: 4),
+              child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: colorFromId(widget.chatId),
-                    child: Text(widget.chatName[0].toUpperCase()),
+                  // Back button in circle
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.08),
+                      shape: BoxShape.circle,
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () => Navigator.pop(context),
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: Colors.transparent,
-                    backgroundImage: widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
-                        ? CachedNetworkImageProvider('${ApiService.baseUrl}${widget.avatarUrl}')
-                        : null,
-                    onBackgroundImageError: widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
-                        ? (_, __) {}
-                        : null,
-                  ),
-                  if (widget.otherUserId != null)
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
+                  const SizedBox(width: 8),
+                  // Bubble: avatar + name + status
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _navigateToProfileOrGroup,
                       child: Container(
-                        width: 10,
-                        height: 10,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: _isOtherOnline ? Colors.green : Colors.grey,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(28),
+                        ),
+                        child: Row(
+                          children: [
+                            Stack(
+                              children: [
+                                CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: colorFromId(widget.chatId),
+                                  child: Text(widget.chatName[0].toUpperCase()),
+                                ),
+                                CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: Colors.transparent,
+                                  backgroundImage:
+                                      widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
+                                      ? CachedNetworkImageProvider(
+                                          '${ApiService.baseUrl}${widget.avatarUrl}',
+                                        )
+                                      : null,
+                                  onBackgroundImageError:
+                                      widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
+                                      ? (_, __) {}
+                                      : null,
+                                ),
+                                if (widget.otherUserId != null)
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        color: _isOtherOnline ? Colors.green : Colors.grey,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.white, width: 1.5),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    widget.chatName,
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context).colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  Builder(
+                                    builder: (context) {
+                                      if (_isOtherTyping) {
+                                        return Text(
+                                          AppLocalizations.of(context).typing,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                          ),
+                                        );
+                                      }
+                                      if (widget.otherUserId != null) {
+                                        if (_isOtherOnline) {
+                                          return Text(
+                                            AppLocalizations.of(context).online,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.green.withOpacity(0.9),
+                                            ),
+                                          );
+                                        } else {
+                                          return Text(
+                                            AppLocalizations.of(context).offline,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                      return const SizedBox.shrink();
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(widget.chatName, style: const TextStyle(fontSize: 16)),
-                  Builder(
-                    builder: (context) {
-                      if (_isOtherTyping) {
-                        return Text(
-                          AppLocalizations.of(context).typing,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context).appBarTheme.foregroundColor?.withOpacity(0.7),
-                          ),
-                        );
-                      }
-                      if (widget.otherUserId != null) {
-                        if (_isOtherOnline) {
-                          return Text(
-                            AppLocalizations.of(context).online,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.green.withOpacity(0.9),
-                            ),
-                          );
-                        } else {
-                          return Text(
-                            AppLocalizations.of(context).offline,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).appBarTheme.foregroundColor?.withOpacity(0.5),
-                            ),
-                          );
+                  ),
+                  const SizedBox(width: 8),
+                  // Three dots in circle
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.08),
+                      shape: BoxShape.circle,
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: PopupMenuButton<String>(
+                      icon: Icon(Icons.more_vert, color: Theme.of(context).colorScheme.onSurface),
+                      onSelected: (value) async {
+                        if (value == 'info') {
+                          _navigateToProfileOrGroup();
+                        } else if (value == 'mute') {
+                          await MuteService.toggle(widget.chatId);
+                          await _loadMuteStatus();
                         }
-                      }
-                      return const SizedBox.shrink();
-                    },
+                      },
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: 'info',
+                          child: ListTile(
+                            leading: const Icon(Icons.info_outline),
+                            title: Text(AppLocalizations.of(context).information),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'mute',
+                          child: ListTile(
+                            leading: Icon(
+                              _isMuted ? Icons.notifications : Icons.notifications_off,
+                            ),
+                            title: Text(
+                              _isMuted
+                                  ? AppLocalizations.of(context).unmute
+                                  : AppLocalizations.of(context).mute,
+                            ),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
-        actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) async {
-              if (value == 'info') {
-                _navigateToProfileOrGroup();
-              } else if (value == 'mute') {
-                await MuteService.toggle(widget.chatId);
-                await _loadMuteStatus();
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'info',
-                child: ListTile(
-                  leading: const Icon(Icons.info_outline),
-                  title: Text(AppLocalizations.of(context).information),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuItem(
-                value: 'mute',
-                child: ListTile(
-                  leading: Icon(_isMuted ? Icons.notifications : Icons.notifications_off),
-                  title: Text(_isMuted ? AppLocalizations.of(context).unmute : AppLocalizations.of(context).mute),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ],
           ),
         ],
+        ),
       ),
       body: Stack(
         children: [
           if (_wallpaperPath != null && File(_wallpaperPath!).existsSync())
             Positioned.fill(
-              child: Image.file(
-                File(_wallpaperPath!),
-                fit: BoxFit.cover,
-              ),
+              child: Image.file(File(_wallpaperPath!), fit: BoxFit.cover),
             ),
           GestureDetector(
             onTap: () => FocusScope.of(context).unfocus(),
             behavior: HitTestBehavior.translucent,
             child: Column(
-          children: [
-            if (_replyToMessage != null)
-              Container(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 4,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.blue,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+              children: [
+                if (_replyToMessage != null)
+                  Container(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _replyToMessage!.userId == _currentUserId
-                                ? AppLocalizations.of(context).replyToYourself
-                                : '${AppLocalizations.of(context).replyTo} ${_replyToMessage!.replyUsername ?? ''}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 4,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.blue,
+                            borderRadius: BorderRadius.circular(2),
                           ),
-                          Text(
-                            _replyToMessage!.text,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 18),
-                      onPressed: _cancelReply,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-              ),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : (_messages.isEmpty
-                        ? Center(child: Text(AppLocalizations.of(context).noMessagesYet))
-                        : ListView.builder(
-                            key: PageStorageKey('chat_${widget.chatId}'),
-                            controller: _scrollController,
-                            reverse: true,
-                            padding: const EdgeInsets.all(8),
-                            itemCount: _displayItems.length,
-                            itemBuilder: (_, i) {
-                              final item = _displayItems[_displayItems.length - 1 - i];
-                              if (item is String) {
-                                return _buildDateSeparator(item);
-                              }
-                              final msg = item as Message;
-                              final child = _buildMessage(msg);
-                              if (msg.isDeleted || msg.text == '[deleted]') {
-                                return KeyedSubtree(key: ValueKey(msg.id), child: child);
-                              }
-                              return KeyedSubtree(
-                                key: ValueKey('swipe_${msg.id}'),
-                                child: _buildSwipeableMessage(msg, child),
-                              );
-                            },
-                          )),
-            ),
-            if (_isEditing)
-              Container(
-                color: Colors.amber[100],
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.edit, size: 16),
-                    const SizedBox(width: 8),
-                    Text(AppLocalizations.of(context).editingMessage),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: _cancelEdit,
-                      child: Text(AppLocalizations.of(context).cancel),
-                    ),
-                  ],
-                ),
-              ),
-            if (_pendingFile != null && !_isEditing)
-              _buildPendingFilePreview(),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-          IconButton(
-            onPressed: _isUploading ? null : _showAttachmentOptions,
-            icon: _isUploading
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.attach_file),
-          ),
-                    Expanded(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 120),
-                          child: TextField(
-                            controller: _messageController,
-                            maxLines: null,
-                            minLines: 1,
-                            textCapitalization: TextCapitalization.sentences,
-                            inputFormatters: [
-                              LengthLimitingTextInputFormatter(_maxMessageLength),
-                            ],
-                            decoration: InputDecoration(
-                              hintText: _isEditing
-                                  ? AppLocalizations.of(context).editMessageHint
-                                  : AppLocalizations.of(context).typeMessage,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(24),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                              isDense: true,
-                            ),
-                            textInputAction: TextInputAction.newline,
-                            onChanged: (value) {
-                              _draftDebounce?.cancel();
-                              _draftDebounce = Timer(const Duration(milliseconds: 300), _saveDraft);
-                            },
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (_isRecording)
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.mic,
-                                  color: Colors.white,
-                                  size: 16,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _replyToMessage!.userId == _currentUserId
+                                    ? AppLocalizations.of(
+                                        context,
+                                      ).replyToYourself
+                                    : '${AppLocalizations.of(context).replyTo} ${_replyToMessage!.replyUsername ?? ''}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _getRecordingDuration(),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
+                              ),
+                              Text(
+                                _replyToMessage!.text,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: _cancelReply,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                  ),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      _isLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : (_messages.isEmpty
+                                ? Center(
+                                    child: Text(
+                                      AppLocalizations.of(
+                                        context,
+                                      ).noMessagesYet,
+                                    ),
+                                  )
+                                : ListView.builder(
+                                    key: PageStorageKey(
+                                      'chat_${widget.chatId}',
+                                    ),
+                                    controller: _scrollController,
+                                    reverse: true,
+                                    padding: const EdgeInsets.all(8),
+                                    itemCount: _displayItems.length,
+                                    itemBuilder: (_, i) {
+                                      final item =
+                                          _displayItems[_displayItems.length -
+                                              1 -
+                                              i];
+                                      if (item is String) {
+                                        return _buildDateSeparator(item);
+                                      }
+                                      final msg = item as Message;
+                                      final child = _buildMessage(msg);
+                                      if (msg.isDeleted ||
+                                          msg.text == '[deleted]') {
+                                        return KeyedSubtree(
+                                          key: ValueKey(msg.id),
+                                          child: child,
+                                        );
+                                      }
+                                      return KeyedSubtree(
+                                        key: ValueKey('swipe_${msg.id}'),
+                                        child: _buildSwipeableMessage(
+                                          msg,
+                                          child,
+                                        ),
+                                      );
+                                    },
+                                  )),
+                      if (_showScrollDownButton)
+                        Positioned(
+                          right: 16,
+                          bottom: 16,
+                          child: FloatingActionButton.small(
+                            heroTag: 'scrollDown',
+                            onPressed: () {
+                              _scrollToBottom(force: true);
+                              setState(() => _showScrollDownButton = false);
+                            },
+                            child: const Icon(Icons.arrow_downward),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (_isEditing)
+                  Container(
+                    color: Colors.amber[100],
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.edit, size: 16),
+                        const SizedBox(width: 8),
+                        Text(AppLocalizations.of(context).editingMessage),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: _cancelEdit,
+                          child: Text(AppLocalizations.of(context).cancel),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (_pendingFile != null && !_isEditing)
+                  _buildPendingFilePreview(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(32),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                        BoxShadow(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: 0.06),
+                          blurRadius: 16,
+                          spreadRadius: -4,
+                        ),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: SafeArea(
+                      top: false,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            onPressed: _isUploading
+                                ? null
+                                : _showAttachmentOptions,
+                            icon: _isUploading
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.attach_file),
+                          ),
+                          Expanded(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 120),
+                              child: TextField(
+                                controller: _messageController,
+                                maxLines: null,
+                                minLines: 1,
+                                textCapitalization:
+                                    TextCapitalization.sentences,
+                                inputFormatters: [
+                                  LengthLimitingTextInputFormatter(
+                                    _maxMessageLength,
+                                  ),
+                                ],
+                                decoration: InputDecoration(
+                                  hintText: _isEditing
+                                      ? AppLocalizations.of(
+                                          context,
+                                        ).editMessageHint
+                                      : AppLocalizations.of(
+                                          context,
+                                        ).typeMessage,
+                                  border: InputBorder.none,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 10,
+                                  ),
+                                  isDense: true,
+                                ),
+                                textInputAction: TextInputAction.newline,
+                                onChanged: (value) {
+                                  _draftDebounce?.cancel();
+                                  _draftDebounce = Timer(
+                                    const Duration(milliseconds: 300),
+                                    _saveDraft,
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          if (_isRecording)
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.mic,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        _getRecordingDuration(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton.filled(
+                                  onPressed: _stopRecording,
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                  ),
+                                  icon: const Icon(Icons.stop),
+                                ),
+                              ],
+                            )
+                          else
+                            Row(
+                              children: [
+                                IconButton(
+                                  onPressed: _startRecording,
+                                  icon: const Icon(Icons.mic),
+                                ),
+                                IconButton.filled(
+                                  onPressed: _isUploading ? null : _sendMessage,
+                                  icon: Icon(
+                                    _isEditing ? Icons.check : Icons.send,
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton.filled(
-                            onPressed: _stopRecording,
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.red,
-                            ),
-                            icon: const Icon(Icons.stop),
-                          ),
-                        ],
-                      )
-                    else
-                      Row(
-                        children: [
-                          IconButton(
-                            onPressed: _startRecording,
-                            icon: const Icon(Icons.mic),
-                          ),
-                          IconButton.filled(
-                            onPressed: _isUploading ? null : _sendMessage,
-                            icon: Icon(_isEditing ? Icons.check : Icons.send),
-                          ),
                         ],
                       ),
-                  ],
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
         ],
       ),
     );
@@ -1529,7 +1772,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } else {
       myBubbleColor = Theme.of(context).colorScheme.primary;
       myTextColor = Theme.of(context).colorScheme.onPrimary;
-      mySecTextColor = Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7);
+      mySecTextColor = Theme.of(
+        context,
+      ).colorScheme.onPrimary.withValues(alpha: 0.7);
       theirBubbleColor = Theme.of(context).colorScheme.surfaceContainerHigh;
       theirTextColor = Theme.of(context).colorScheme.onSurface;
       theirSecTextColor = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -1539,8 +1784,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final isMe = msg.userId == _currentUserId;
       final bubbleColor = isMe
           ? myBubbleColor
-          : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
-      final textColor = isMe ? mySecTextColor : Theme.of(context).colorScheme.onSurfaceVariant;
+          : Theme.of(
+              context,
+            ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
+      final textColor = isMe
+          ? mySecTextColor
+          : Theme.of(context).colorScheme.onSurfaceVariant;
       return Padding(
         padding: EdgeInsets.only(
           left: isMe ? 64 : 12,
@@ -1588,7 +1837,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         hasFile && ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].contains(ext);
 
     if (hasFile && isImage) {
-      final imageUrl = '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}';
+      final imageUrl =
+          '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}';
       return GestureDetector(
         onTap: () {
           Navigator.of(context).push(
@@ -1618,7 +1868,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: CachedNetworkImage(
-                      imageUrl: '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}',
+                      imageUrl:
+                          '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}',
                       fit: BoxFit.contain,
                       errorWidget: (_, __, ___) => Container(
                         padding: const EdgeInsets.all(12),
@@ -1636,16 +1887,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             Icon(
                               Icons.broken_image,
                               size: 20,
-                              color: isMe
-                                  ? mySecTextColor
-                                  : theirSecTextColor,
+                              color: isMe ? mySecTextColor : theirSecTextColor,
                             ),
                             const SizedBox(width: 8),
                             Flexible(
                               child: Text(
                                 fileName,
                                 style: TextStyle(
-color: isMe ? myTextColor : theirTextColor,
+                                  color: isMe ? myTextColor : theirTextColor,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -1705,79 +1954,84 @@ color: isMe ? myTextColor : theirTextColor,
           '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}',
         ),
         onLongPress: () => _showMessageMenu(msg),
-          child: Align(
-            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.6,
-                maxHeight: MediaQuery.of(context).size.height * 0.4,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: isMe
-                    ? CrossAxisAlignment.end
-                    : CrossAxisAlignment.start,
-                children: [
-                  Flexible(
-                    fit: FlexFit.loose,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: _VideoThumbnail(
-                        videoUrl:
+        child: Align(
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.6,
+              maxHeight: MediaQuery.of(context).size.height * 0.4,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: isMe
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: _VideoThumbnail(
+                      videoUrl:
                           '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}',
-                        fileName: fileName,
-                      ),
+                      fileName: fileName,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (msg.isEdited)
-                          Text(
-                            '${AppLocalizations.of(context).editedLabel} ',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontStyle: FontStyle.italic,
-                              color: Colors.white70,
-                            ),
-                          ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (msg.isEdited)
                         Text(
-                          _formatTime(msg.createdAt),
-                          style: const TextStyle(
+                          '${AppLocalizations.of(context).editedLabel} ',
+                          style: TextStyle(
                             fontSize: 10,
+                            fontStyle: FontStyle.italic,
                             color: Colors.white70,
                           ),
                         ),
-                        if (isMe) ...[
-                          const SizedBox(width: 4),
-                          _buildStatusIcon(msg.status),
-                        ],
+                      Text(
+                        _formatTime(msg.createdAt),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.white70,
+                        ),
+                      ),
+                      if (isMe) ...[
+                        const SizedBox(width: 4),
+                        _buildStatusIcon(msg.status),
                       ],
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
+        ),
       );
     }
 
     if (hasFile && isAudio) {
-      debugPrint('[_buildMessage.audio] msgId=${msg.id} deleted=${msg.isDeleted} fileId=${msg.fileId} playerExists=${_audioPlayers.containsKey(msg.id)}');
-      final audioPlayer = _audioPlayers.putIfAbsent(msg.id, () => AudioPlayer(
-        handleInterruptions: false,
-        androidApplyAudioAttributes: false,
-      ));
+      debugPrint(
+        '[_buildMessage.audio] msgId=${msg.id} deleted=${msg.isDeleted} fileId=${msg.fileId} playerExists=${_audioPlayers.containsKey(msg.id)}',
+      );
+      final audioPlayer = _audioPlayers.putIfAbsent(
+        msg.id,
+        () => AudioPlayer(
+          handleInterruptions: false,
+          androidApplyAudioAttributes: false,
+        ),
+      );
       return GestureDetector(
         onLongPress: () => _showMessageMenu(msg),
         child: Align(
@@ -1809,7 +2063,7 @@ color: isMe ? myTextColor : theirTextColor,
                       key: ValueKey('audio_${msg.id}'),
                       audioPlayer: audioPlayer,
                       audioUrl:
-          '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}',
+                          '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}',
                       fileName: fileName,
                       isMe: isMe,
                       showFileName: ext != 'm4a',
@@ -1827,14 +2081,16 @@ color: isMe ? myTextColor : theirTextColor,
                               style: TextStyle(
                                 fontSize: 10,
                                 fontStyle: FontStyle.italic,
-                                color: isMe ? mySecTextColor : theirSecTextColor,
+                                color: isMe
+                                    ? mySecTextColor
+                                    : theirSecTextColor,
                               ),
                             ),
-                            Text(
-                              _formatTime(msg.createdAt),
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: isMe ? mySecTextColor : theirSecTextColor,
+                          Text(
+                            _formatTime(msg.createdAt),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: isMe ? mySecTextColor : theirSecTextColor,
                             ),
                           ),
                           if (isMe) ...[
@@ -1885,7 +2141,9 @@ color: isMe ? myTextColor : theirTextColor,
                       decoration: BoxDecoration(
                         border: Border(
                           left: BorderSide(
-                          color: isMe ? mySecTextColor : Theme.of(context).colorScheme.primary,
+                            color: isMe
+                                ? mySecTextColor
+                                : Theme.of(context).colorScheme.primary,
                             width: 2,
                           ),
                         ),
@@ -1933,16 +2191,25 @@ color: isMe ? myTextColor : theirTextColor,
                           Padding(
                             padding: const EdgeInsets.only(bottom: 2),
                             child: Text(
-                              _participantNames[msg.userId] ?? AppLocalizations.of(context).unknown,
+                              _participantNames[msg.userId] ??
+                                  AppLocalizations.of(context).unknown,
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: adaptive ? theirSecTextColor : Theme.of(context).colorScheme.onSurfaceVariant,
+                                color: adaptive
+                                    ? theirSecTextColor
+                                    : Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
                               ),
                             ),
                           ),
                         _buildMessageText(
-                          _decryptedTexts[msg.id] ?? msg.plainText ?? (msg.keyType == 'e2ee_v1' ? AppLocalizations.of(context).e2eeLabel : msg.text),
+                          _decryptedTexts[msg.id] ??
+                              msg.plainText ??
+                              (msg.keyType == 'e2ee_v1'
+                                  ? AppLocalizations.of(context).e2eeLabel
+                                  : msg.text),
                           isMe ? myTextColor : theirTextColor,
                         ),
                       ],
@@ -1959,9 +2226,7 @@ color: isMe ? myTextColor : theirTextColor,
                             style: TextStyle(
                               fontSize: 10,
                               fontStyle: FontStyle.italic,
-                              color: isMe
-                                  ? mySecTextColor
-                                  : theirSecTextColor,
+                              color: isMe ? mySecTextColor : theirSecTextColor,
                             ),
                           ),
                         Text(
@@ -1991,7 +2256,9 @@ color: isMe ? myTextColor : theirTextColor,
     final isMe = msg.userId == _currentUserId;
     return Dismissible(
       key: ValueKey('dismiss_${msg.id}'),
-      direction: isMe ? DismissDirection.startToEnd : DismissDirection.endToStart,
+      direction: isMe
+          ? DismissDirection.startToEnd
+          : DismissDirection.endToStart,
       dismissThresholds: {
         isMe ? DismissDirection.startToEnd : DismissDirection.endToStart: 0.18,
       },
@@ -2026,7 +2293,11 @@ color: isMe ? myTextColor : theirTextColor,
                   width: 48,
                   height: 48,
                   child: isImage && _pendingFile != null
-                      ? Image.file(_pendingFile!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fileIcon())
+                      ? Image.file(
+                          _pendingFile!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _fileIcon(),
+                        )
                       : _fileIcon(),
                 ),
               ),
@@ -2040,7 +2311,13 @@ color: isMe ? myTextColor : theirTextColor,
                 ),
               ),
               if (_isUploading)
-                Text(_uploadStatus, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500))
+                Text(
+                  _uploadStatus,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                )
               else
                 IconButton(
                   icon: const Icon(Icons.close, size: 18),
@@ -2052,7 +2329,9 @@ color: isMe ? myTextColor : theirTextColor,
           ),
           if (_isUploading) ...[
             const SizedBox(height: 6),
-            LinearProgressIndicator(value: _uploadProgress > 0 ? _uploadProgress : null),
+            LinearProgressIndicator(
+              value: _uploadProgress > 0 ? _uploadProgress : null,
+            ),
           ],
           const SizedBox(height: 4),
         ],
@@ -2064,10 +2343,7 @@ color: isMe ? myTextColor : theirTextColor,
     final isVideo = _pendingFileMimeType?.startsWith('video/') ?? false;
     return Container(
       color: Theme.of(context).colorScheme.surfaceContainerHigh,
-      child: Icon(
-        isVideo ? Icons.videocam : Icons.insert_drive_file,
-        size: 28,
-      ),
+      child: Icon(isVideo ? Icons.videocam : Icons.insert_drive_file, size: 28),
     );
   }
 
@@ -2146,12 +2422,16 @@ color: isMe ? myTextColor : theirTextColor,
       }
       final rawUrl = text.substring(m.start, m.end);
       final cleanUrl = stripTrailingPunctuation(rawUrl);
-      spans.add(TextSpan(
-        text: rawUrl,
-        style: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
-        recognizer: TapGestureRecognizer()
-          ..onTap = () => _openUrl(cleanUrl),
-      ));
+      spans.add(
+        TextSpan(
+          text: rawUrl,
+          style: const TextStyle(
+            color: Colors.blue,
+            decoration: TextDecoration.underline,
+          ),
+          recognizer: TapGestureRecognizer()..onTap = () => _openUrl(cleanUrl),
+        ),
+      );
       lastEnd = m.end;
     }
     if (lastEnd < text.length) {
@@ -2159,7 +2439,10 @@ color: isMe ? myTextColor : theirTextColor,
     }
 
     return RichText(
-      text: TextSpan(style: TextStyle(color: textColor), children: spans),
+      text: TextSpan(
+        style: TextStyle(color: textColor),
+        children: spans,
+      ),
     );
   }
 
@@ -2172,7 +2455,10 @@ color: isMe ? myTextColor : theirTextColor,
       debugPrint('=== URL LAUNCH ERROR: $e ===');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка: $e'), duration: const Duration(seconds: 3)),
+          SnackBar(
+            content: Text('Ошибка: $e'),
+            duration: const Duration(seconds: 3),
+          ),
         );
       }
     }
@@ -2195,7 +2481,10 @@ color: isMe ? myTextColor : theirTextColor,
                   Clipboard.setData(ClipboardData(text: msgText));
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Скопировано'), duration: Duration(seconds: 2)),
+                      const SnackBar(
+                        content: Text('Скопировано'),
+                        duration: Duration(seconds: 2),
+                      ),
                     );
                   }
                 }
@@ -2246,10 +2535,13 @@ color: isMe ? myTextColor : theirTextColor,
       final ext = fileName.split('.').last.toLowerCase();
       return audioExts.contains(ext);
     }
+
     final next = _messages
         .where((m) => m.createdAt > completed.createdAt && isAudioFile(m))
-        .fold<Message?>(null, (min, m) =>
-            min == null || m.createdAt < min.createdAt ? m : min);
+        .fold<Message?>(
+          null,
+          (min, m) => min == null || m.createdAt < min.createdAt ? m : min,
+        );
     if (next == null) return;
     for (final entry in _audioPlayers.entries) {
       if (entry.key != next.id) entry.value.pause();
@@ -2285,12 +2577,16 @@ color: isMe ? myTextColor : theirTextColor,
   String _messageDateStr(int ts) {
     final now = DateTime.now();
     final date = DateTime.fromMillisecondsSinceEpoch(ts);
-    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+    if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day) {
       final l10n = AppLocalizations.of(context);
       return l10n.today;
     }
     final yesterday = now.subtract(const Duration(days: 1));
-    if (date.year == yesterday.year && date.month == yesterday.month && date.day == yesterday.day) {
+    if (date.year == yesterday.year &&
+        date.month == yesterday.month &&
+        date.day == yesterday.day) {
       final l10n = AppLocalizations.of(context);
       return l10n.yesterday;
     }
@@ -2306,10 +2602,13 @@ color: isMe ? myTextColor : theirTextColor,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.8,
+            ),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Text(text,
+          child: Text(
+            text,
             style: TextStyle(
               fontSize: 12,
               color: theme.colorScheme.onSurfaceVariant,
@@ -2358,7 +2657,9 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
   @override
   void initState() {
     super.initState();
-    debugPrint('[_AudioPlayerWidgetState#$runtimeType.initState] instance=$_instanceId url=${widget.audioUrl}');
+    debugPrint(
+      '[_AudioPlayerWidgetState#$runtimeType.initState] instance=$_instanceId url=${widget.audioUrl}',
+    );
     _audioPlayer = widget.audioPlayer;
     _setupStreams();
     _initAudio();
@@ -2370,7 +2671,9 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
     _positionSub = _audioPlayer.positionStream.listen((pos) {
       if (mounted && pos.inSeconds >= 0) {
         if (_position > Duration.zero && pos == Duration.zero) {
-          debugPrint('[_AudioWidget#${_instanceId}.positionStream] RESET TO ZERO _isPlaying=$_isPlaying');
+          debugPrint(
+            '[_AudioWidget#${_instanceId}.positionStream] RESET TO ZERO _isPlaying=$_isPlaying',
+          );
         }
         setState(() => _position = pos);
       }
@@ -2378,7 +2681,9 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
     _playerStateSub = _audioPlayer.playerStateStream.listen((state) {
       if (mounted) {
         if (_isPlaying && !state.playing) {
-          debugPrint('[_AudioWidget#${_instanceId}.playerStateStream] PLAYING→STOPPED processingState=${state.processingState}');
+          debugPrint(
+            '[_AudioWidget#${_instanceId}.playerStateStream] PLAYING→STOPPED processingState=${state.processingState}',
+          );
         }
         setState(() {
           _isPlaying = state.playing;
@@ -2397,9 +2702,13 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
   @override
   void didUpdateWidget(covariant _AudioPlayerWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    debugPrint('[_AudioWidget#${_instanceId}.didUpdateWidget] url=${widget.audioUrl} sameUrl=${oldWidget.audioUrl == widget.audioUrl}');
+    debugPrint(
+      '[_AudioWidget#${_instanceId}.didUpdateWidget] url=${widget.audioUrl} sameUrl=${oldWidget.audioUrl == widget.audioUrl}',
+    );
     if (oldWidget.audioUrl != widget.audioUrl) {
-      debugPrint('[_AudioWidget#${_instanceId}.didUpdateWidget] URL CHANGED, reloading');
+      debugPrint(
+        '[_AudioWidget#${_instanceId}.didUpdateWidget] URL CHANGED, reloading',
+      );
       _playerUrls.remove(_audioPlayer);
       _initAudio();
     }
@@ -2407,7 +2716,9 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
 
   Future<void> _initAudio() async {
     final cachedUrl = _playerUrls[_audioPlayer];
-    debugPrint('[_AudioWidget#${_instanceId}._initAudio] cachedUrl=$cachedUrl widgetUrl=${widget.audioUrl} skip=${cachedUrl == widget.audioUrl}');
+    debugPrint(
+      '[_AudioWidget#${_instanceId}._initAudio] cachedUrl=$cachedUrl widgetUrl=${widget.audioUrl} skip=${cachedUrl == widget.audioUrl}',
+    );
     if (cachedUrl == widget.audioUrl) {
       final duration = _audioPlayer.duration;
       if (mounted) {
@@ -2419,7 +2730,9 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
       return;
     }
     try {
-      debugPrint('[_AudioWidget#${_instanceId}._initAudio] CALLING setUrl url=${widget.audioUrl}');
+      debugPrint(
+        '[_AudioWidget#${_instanceId}._initAudio] CALLING setUrl url=${widget.audioUrl}',
+      );
       await _audioPlayer.setUrl(widget.audioUrl);
       _playerUrls[_audioPlayer] = widget.audioUrl;
       debugPrint('[_AudioWidget#${_instanceId}._initAudio] setUrl OK');
@@ -2451,7 +2764,9 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
 
   @override
   void dispose() {
-    debugPrint('[_AudioPlayerWidgetState#$runtimeType.dispose] instance=$_instanceId');
+    debugPrint(
+      '[_AudioPlayerWidgetState#$runtimeType.dispose] instance=$_instanceId',
+    );
     _positionSub?.cancel();
     _playerStateSub?.cancel();
     super.dispose();
@@ -2463,7 +2778,9 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
         ? Theme.of(context).colorScheme.onPrimary
         : Theme.of(context).colorScheme.onSurface;
     final dimColor = textColor.withValues(alpha: 0.6);
-    final accentColor = widget.isMe ? dimColor : Theme.of(context).colorScheme.primary;
+    final accentColor = widget.isMe
+        ? dimColor
+        : Theme.of(context).colorScheme.primary;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -2509,17 +2826,24 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
                       behavior: HitTestBehavior.opaque,
                       onTapDown: (details) {
                         if (!_isInitialized) return;
-                        final ratio = (details.localPosition.dx / 160.0).clamp(0.0, 1.0);
+                        final ratio = (details.localPosition.dx / 160.0).clamp(
+                          0.0,
+                          1.0,
+                        );
                         _audioPlayer.seek(
-                          Duration(milliseconds: (_duration.inMilliseconds * ratio).toInt()),
+                          Duration(
+                            milliseconds: (_duration.inMilliseconds * ratio)
+                                .toInt(),
+                          ),
                         );
                       },
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(2),
                         child: LinearProgressIndicator(
                           value: _duration.inMilliseconds > 0
-                              ? (_position.inMilliseconds / _duration.inMilliseconds)
-                                  .clamp(0.0, 1.0)
+                              ? (_position.inMilliseconds /
+                                        _duration.inMilliseconds)
+                                    .clamp(0.0, 1.0)
                               : 0,
                           backgroundColor: dimColor.withValues(alpha: 0.25),
                           color: accentColor,
@@ -2546,10 +2870,7 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
                     ),
                   ],
                 )
-              : const SizedBox(
-                  height: 4,
-                  child: LinearProgressIndicator(),
-                ),
+              : const SizedBox(height: 4, child: LinearProgressIndicator()),
         ),
       ],
     );

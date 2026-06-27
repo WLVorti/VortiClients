@@ -29,8 +29,11 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  static Profile? _cachedProfile;
+  static List<Account> _cachedAccounts = [];
+  static Account? _cachedCurrentAccount;
+
   Profile? _profile;
-  bool _isLoading = true;
   bool _isSaving = false;
   bool _isUploadingAvatar = false;
   List<Account> _accounts = [];
@@ -45,6 +48,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _profile = _cachedProfile;
+    _accounts = List.from(_cachedAccounts);
+    _currentAccount = _cachedCurrentAccount;
+    if (_profile != null) {
+      _displayNameController.text = _profile!.displayName ?? '';
+      _bioController.text = _profile!.bio ?? '';
+      _emailController.text = _profile!.email ?? '';
+    }
     _loadProfile();
     _loadAccounts();
     _emailController.addListener(_validateEmail);
@@ -64,14 +75,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadAccounts() async {
-    final accounts = await widget.api.getAccounts();
-    final current = await widget.api.getCurrentAccount();
-    if (mounted) {
-      setState(() {
-        _accounts = accounts;
-        _currentAccount = current;
-      });
-    }
+    try {
+      final accounts = await widget.api.getAccounts();
+      final current = await widget.api.getCurrentAccount();
+      if (mounted) {
+        setState(() {
+          _accounts = accounts;
+          _currentAccount = current;
+          _cachedAccounts = accounts;
+          _cachedCurrentAccount = current;
+        });
+      }
+    } catch (_) {}
   }
 
   void _showAccountsBottomSheet() {
@@ -130,7 +145,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     String name;
     if (account.displayName?.isNotEmpty == true) {
       name = account.displayName!;
-    } else if (account.username?.isNotEmpty == true && account.username != account.id) {
+    } else if (account.username?.isNotEmpty == true &&
+        account.username != account.id) {
       name = account.username!;
     } else {
       // Use first 2 chars of ID as fallback
@@ -144,15 +160,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
-    setState(() {
-      _isLoading = true;
-    });
     try {
       final profile = await widget.api.getProfile();
       if (mounted) {
         setState(() {
           _profile = profile;
-          _isLoading = false;
+          _cachedProfile = profile;
           _displayNameController.text = profile?.displayName ?? '';
           _bioController.text = profile?.bio ?? '';
           _emailController.text = profile?.email ?? '';
@@ -160,11 +173,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (e) {
       print('Load profile error: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
     }
   }
 
@@ -172,9 +180,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final email = _emailController.text.trim();
     if (email.isNotEmpty && (!email.contains('@') || !email.contains('.'))) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Некорректный email')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Некорректный email')));
       }
       return;
     }
@@ -196,9 +204,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isSaving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }
@@ -210,8 +218,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       try {
         // Copy to app temp dir to ensure stable access
         final tmpDir = await getTemporaryDirectory();
-        final localImage = File('${tmpDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg');
-        await localImage.writeAsBytes(await File(result.files.single.path!).readAsBytes());
+        final localImage = File(
+          '${tmpDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+        await localImage.writeAsBytes(
+          await File(result.files.single.path!).readAsBytes(),
+        );
 
         final controller = ImageCropperController();
         final file = await Navigator.push<Uint8List>(
@@ -252,7 +264,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
         localImage.delete().catchError((_) {});
         if (file != null) {
-          final out = File('${tmpDir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png');
+          final out = File(
+            '${tmpDir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png',
+          );
           await out.writeAsBytes(file);
           final avatarUrl = await widget.api.uploadAvatar(out);
           out.delete().catchError((_) {});
@@ -300,7 +314,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: LayoutBuilder(
           builder: (context, constraints) => SizedBox(
             width: constraints.maxWidth,
-            child: Text(AppLocalizations.of(context).account, overflow: TextOverflow.ellipsis),
+            child: Text(
+              AppLocalizations.of(context).account,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ),
         centerTitle: false,
@@ -329,317 +346,315 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
-      body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                if (_profile != null)
-                  Center(
-                    child: Stack(
-                      children: [
-                      CircleAvatar(
-                        radius: 50,
-                        backgroundColor: colorFromId(widget.api.userId ?? ''),
-                        backgroundImage: _profile?.avatarUrl != null
-                            ? CachedNetworkImageProvider(_getAvatarUrl())
-                            : null,
-                      child: _profile?.avatarUrl == null
-                          ? Text(
-                              _getInitial(),
-                              style: const TextStyle(fontSize: 36),
-                            )
-                          : null,
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: GestureDetector(
-                          onTap: _pickImage,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: _themeProvider.primaryColor,
-                              shape: BoxShape.circle,
-                            ),
-                            child: _isUploadingAvatar
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.camera_alt,
-                                    size: 16,
-                                    color: Colors.white,
-                                  ),
-                          ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (_profile != null)
+            Center(
+              child: Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: colorFromId(widget.api.userId ?? ''),
+                    backgroundImage: _profile?.avatarUrl != null
+                        ? CachedNetworkImageProvider(_getAvatarUrl())
+                        : null,
+                    child: _profile?.avatarUrl == null
+                        ? Text(
+                            _getInitial(),
+                            style: const TextStyle(fontSize: 36),
+                          )
+                        : null,
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: GestureDetector(
+                      onTap: _pickImage,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: _themeProvider.primaryColor,
+                          shape: BoxShape.circle,
                         ),
-                      ),
-                      if (_profile?.avatarUrl != null)
-                        Positioned(
-                          top: 0,
-                          right: 0,
-                          child: GestureDetector(
-                            onTap: _removeAvatar,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(
-                                color: Colors.red,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.close,
-                                size: 12,
+                        child: _isUploadingAvatar
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.camera_alt,
+                                size: 16,
                                 color: Colors.white,
                               ),
-                            ),
+                      ),
+                    ),
+                  ),
+                  if (_profile?.avatarUrl != null)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: _removeAvatar,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            size: 12,
+                            color: Colors.white,
                           ),
                         ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 24),
+          Center(
+            child: Text(
+              '@${_profile?.username ?? ''}',
+              style: const TextStyle(fontSize: 16),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Builder(
+            builder: (context) {
+              final theme = Theme.of(context);
+              return TextField(
+                controller: _displayNameController,
+                decoration: InputDecoration(
+                  labelText: AppLocalizations.of(context).displayName,
+                  labelStyle: theme.textTheme.bodyMedium?.copyWith(
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  alignLabelWithHint: true,
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          Builder(
+            builder: (context) {
+              final theme = Theme.of(context);
+              return TextField(
+                controller: _emailController,
+                decoration: InputDecoration(
+                  labelText: 'Email',
+                  hintText: 'example@mail.com',
+                  labelStyle: theme.textTheme.bodyMedium?.copyWith(
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  alignLabelWithHint: true,
+                  prefixIcon: const Icon(Icons.email_outlined),
+                  errorText: _emailError,
+                ),
+                keyboardType: TextInputType.emailAddress,
+              );
+            },
+          ),
+          if (_emailController.text.isEmpty) ...[
+            const SizedBox(height: 8),
+            Builder(
+              builder: (context) {
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    'Укажите email для восстановления аккаунта',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+          const SizedBox(height: 16),
+          Builder(
+            builder: (context) {
+              final theme = Theme.of(context);
+              return TextField(
+                controller: _bioController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: AppLocalizations.of(context).bio,
+                  labelStyle: theme.textTheme.bodyMedium?.copyWith(
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  alignLabelWithHint: true,
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                child: const Icon(Icons.palette, color: Colors.white, size: 20),
+              ),
+              title: Text(AppLocalizations.of(context).theme),
+              subtitle: Text(
+                _themeProvider.themeId == 'custom'
+                    ? AppLocalizations.of(context).custom
+                    : _themeProvider.themeId,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        ThemeSettingsScreen(themeProvider: _themeProvider),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                child: const Icon(
+                  Icons.language,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              title: Text(AppLocalizations.of(context).language),
+              subtitle: Text(
+                AppLocalizations.of(
+                  context,
+                ).localeName(LocaleProvider().locale.languageCode),
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showLanguagePicker(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Builder(
+            builder: (context) {
+              final theme = Theme.of(context);
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${AppLocalizations.of(context).joined}: ${_formatDate(_profile?.createdAt ?? 0)}',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          Card(
+            color: Theme.of(context).colorScheme.surface,
+            child: ListTile(
+              leading: Icon(
+                Icons.bug_report,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              title: Text(AppLocalizations.of(context).copyDebugLogs),
+              subtitle: Text(
+                '${ApiService.logs.length} ${AppLocalizations.of(context).entries}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: ApiService.getLogs()));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(AppLocalizations.of(context).logsCopied),
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            color: Theme.of(context).colorScheme.surface,
+            child: ListTile(
+              leading: Icon(Icons.logout, color: Colors.red),
+              title: Text(
+                AppLocalizations.of(context).logout,
+                style: TextStyle(color: Colors.red),
+              ),
+              onTap: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Text(AppLocalizations.of(context).logout),
+                    content: Text(AppLocalizations.of(context).logOutConfirm),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: Text(AppLocalizations.of(context).cancel),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red,
+                        ),
+                        child: Text(AppLocalizations.of(context).logout),
+                      ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 24),
-                Center(
-                  child: Text(
-                    '@${_profile?.username ?? ''}',
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Builder(
-                  builder: (context) {
-                    final theme = Theme.of(context);
-                    return TextField(
-                      controller: _displayNameController,
-                      decoration: InputDecoration(
-                        labelText: AppLocalizations.of(context).displayName,
-                        labelStyle: theme.textTheme.bodyMedium?.copyWith(
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        alignLabelWithHint: true,
+                );
+                if (confirmed == true) {
+                  await widget.api.clearCredentials();
+                  widget.api.disconnect();
+                  if (mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (_) => AuthScreen(api: widget.api),
                       ),
+                      (route) => false,
                     );
-                  },
-                ),
-                const SizedBox(height: 16),
-                Builder(
-                  builder: (context) {
-                    final theme = Theme.of(context);
-                    return TextField(
-                      controller: _emailController,
-                      decoration: InputDecoration(
-                        labelText: 'Email',
-                        hintText: 'example@mail.com',
-                        labelStyle: theme.textTheme.bodyMedium?.copyWith(
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        alignLabelWithHint: true,
-                        prefixIcon: const Icon(Icons.email_outlined),
-                        errorText: _emailError,
-                      ),
-                      keyboardType: TextInputType.emailAddress,
-                    );
-                  },
-                ),
-                if (_emailController.text.isEmpty) ...[
-                  const SizedBox(height: 8),
-                  Builder(
-                    builder: (context) {
-                      return Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.errorContainer,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          'Укажите email для восстановления аккаунта',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context).colorScheme.onErrorContainer,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-                const SizedBox(height: 16),
-                Builder(
-                  builder: (context) {
-                    final theme = Theme.of(context);
-                    return TextField(
-                      controller: _bioController,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        labelText: AppLocalizations.of(context).bio,
-                        labelStyle: theme.textTheme.bodyMedium?.copyWith(
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        alignLabelWithHint: true,
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 24),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      child: const Icon(Icons.palette, color: Colors.white, size: 20),
-                    ),
-                    title: Text(AppLocalizations.of(context).theme),
-                    subtitle: Text(
-                      _themeProvider.themeId == 'custom'
-                          ? AppLocalizations.of(context).custom
-                          : _themeProvider.themeId,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ThemeSettingsScreen(
-                            themeProvider: _themeProvider,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      child: const Icon(Icons.language, color: Colors.white, size: 20),
-                    ),
-                    title: Text(AppLocalizations.of(context).language),
-                    subtitle: Text(
-                      AppLocalizations.of(context).localeName(
-                        LocaleProvider().locale.languageCode,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _showLanguagePicker(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Builder(
-                  builder: (context) {
-                    final theme = Theme.of(context);
-                    return Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 16,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '${AppLocalizations.of(context).joined}: ${_formatDate(_profile?.createdAt ?? 0)}',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ),
-                        ],
-                        ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-                Card(
-                  color: Theme.of(context).colorScheme.surface,
-                  child: ListTile(
-                    leading: Icon(
-                      Icons.bug_report,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    title: Text(AppLocalizations.of(context).copyDebugLogs),
-                    subtitle: Text(
-                      '${ApiService.logs.length} ${AppLocalizations.of(context).entries}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    onTap: () {
-                      Clipboard.setData(
-                        ClipboardData(text: ApiService.getLogs()),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(AppLocalizations.of(context).logsCopied),
-                          duration: Duration(seconds: 3),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Card(
-                  color: Theme.of(context).colorScheme.surface,
-                  child: ListTile(
-                    leading: Icon(
-                      Icons.logout,
-                      color: Colors.red,
-                    ),
-                    title: Text(
-                      AppLocalizations.of(context).logout,
-                      style: TextStyle(color: Colors.red),
-                    ),
-                    onTap: () async {
-                      final confirmed = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: Text(AppLocalizations.of(context).logout),
-                          content: Text(AppLocalizations.of(context).logOutConfirm),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: Text(AppLocalizations.of(context).cancel),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              style: TextButton.styleFrom(foregroundColor: Colors.red),
-                              child: Text(AppLocalizations.of(context).logout),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirmed == true) {
-                        await widget.api.clearCredentials();
-                        widget.api.disconnect();
-                        if (mounted) {
-                          Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                              builder: (_) => AuthScreen(api: widget.api),
-                            ),
-                            (route) => false,
-                          );
-                        }
-                      }
-                    },
-                  ),
-                ),
-              ],
+                  }
+                }
+              },
             ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -661,7 +676,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -676,7 +693,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 leading: const Icon(Icons.check_circle, size: 20),
                 title: const Text('English'),
                 trailing: current == 'en'
-                    ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                    ? Icon(
+                        Icons.check,
+                        color: Theme.of(context).colorScheme.primary,
+                      )
                     : null,
                 onTap: () {
                   LocaleProvider().setLocale(const Locale('en'));
@@ -687,7 +707,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 leading: const Icon(Icons.check_circle, size: 20),
                 title: const Text('Русский'),
                 trailing: current == 'ru'
-                    ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                    ? Icon(
+                        Icons.check,
+                        color: Theme.of(context).colorScheme.primary,
+                      )
                     : null,
                 onTap: () {
                   LocaleProvider().setLocale(const Locale('ru'));
@@ -713,10 +736,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(4),
-              border: Border.all(
-                color: Colors.grey.shade300,
-                width: 1,
-              ),
+              border: Border.all(color: Colors.grey.shade300, width: 1),
             ),
           ),
           const SizedBox(width: 12),
@@ -757,9 +777,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       backgroundColor: theme.colorScheme.surface,
       isScrollControlled: true,
-      builder: (context) => _CustomThemeSheet(
-        themeProvider: _themeProvider,
-      ),
+      builder: (context) => _CustomThemeSheet(themeProvider: _themeProvider),
     );
   }
 
@@ -817,12 +835,12 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
   void _applyHexColor() {
     final hex = _hexController.text.trim();
     if (hex.isEmpty) return;
-    
+
     String colorHex = hex;
     if (!hex.startsWith('#')) {
       colorHex = '#$hex';
     }
-    
+
     try {
       final color = Color(int.parse(colorHex.replaceFirst('#', '0xFF')));
       widget.onColorSelected(color);
@@ -844,7 +862,9 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
         children: [
           Text(
             'Select Color',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 16),
           Row(
@@ -960,12 +980,32 @@ class _CustomThemeSheetState extends State<_CustomThemeSheet> {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 24),
-          _buildColorPicker('Primary', _primary, (c) => setState(() => _primary = c)),
-          _buildColorPicker('Secondary', _secondary, (c) => setState(() => _secondary = c)),
-          _buildColorPicker('Background', _background, (c) => setState(() => _background = c)),
-          _buildColorPicker('Surface', _surface, (c) => setState(() => _surface = c)),
+          _buildColorPicker(
+            'Primary',
+            _primary,
+            (c) => setState(() => _primary = c),
+          ),
+          _buildColorPicker(
+            'Secondary',
+            _secondary,
+            (c) => setState(() => _secondary = c),
+          ),
+          _buildColorPicker(
+            'Background',
+            _background,
+            (c) => setState(() => _background = c),
+          ),
+          _buildColorPicker(
+            'Surface',
+            _surface,
+            (c) => setState(() => _surface = c),
+          ),
           _buildColorPicker('Text', _text, (c) => setState(() => _text = c)),
-          _buildColorPicker('Text Secondary', _textSecondary, (c) => setState(() => _textSecondary = c)),
+          _buildColorPicker(
+            'Text Secondary',
+            _textSecondary,
+            (c) => setState(() => _textSecondary = c),
+          ),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -989,7 +1029,11 @@ class _CustomThemeSheetState extends State<_CustomThemeSheet> {
     );
   }
 
-  Widget _buildColorPicker(String label, Color color, Function(Color) onChanged) {
+  Widget _buildColorPicker(
+    String label,
+    Color color,
+    Function(Color) onChanged,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -1055,7 +1099,7 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
 
   Future<void> _switchAccount(Account account) async {
     if (account.id == widget.currentAccount?.id) return;
-    
+
     await widget.api.switchAccount(account.id);
     widget.themeProvider.setCurrentUser(account.id);
     await widget.themeProvider.loadTheme();
@@ -1079,7 +1123,9 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Удалить аккаунт'),
-        content: Text('Удалить ${account.displayName ?? account.username} с этого устройства?'),
+        content: Text(
+          'Удалить ${account.displayName ?? account.username} с этого устройства?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -1092,7 +1138,7 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
         ],
       ),
     );
-    
+
     if (confirmed == true) {
       await widget.api.removeAccount(account.id);
       setState(() {
@@ -1105,7 +1151,7 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       constraints: BoxConstraints(
@@ -1147,7 +1193,7 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
                 itemBuilder: (context, index) {
                   final account = _accounts[index];
                   final isCurrent = account.id == widget.currentAccount?.id;
-                  
+
                   return Card(
                     color: isCurrent
                         ? theme.colorScheme.primary.withValues(alpha: 0.1)
@@ -1157,7 +1203,9 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
                       leading: CircleAvatar(
                         backgroundColor: colorFromId(account.id),
                         backgroundImage: account.avatarUrl != null
-                            ? CachedNetworkImageProvider('https://wlvorti.ru:3000${account.avatarUrl}')
+                            ? CachedNetworkImageProvider(
+                                'https://wlvorti.ru:3000${account.avatarUrl}',
+                              )
                             : null,
                         child: account.avatarUrl == null
                             ? Text(_getAccountInitial(account))
@@ -1167,8 +1215,8 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
                         account.displayName?.isNotEmpty == true
                             ? account.displayName!
                             : account.username?.isNotEmpty == true
-                                ? account.username!
-                                : 'Account ${account.id.substring(0, account.id.length > 8 ? 8 : account.id.length)}',
+                            ? account.username!
+                            : 'Account ${account.id.substring(0, account.id.length > 8 ? 8 : account.id.length)}',
                       ),
                       subtitle: Text(
                         account.username?.isNotEmpty == true
@@ -1179,7 +1227,10 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (isCurrent)
-                            Icon(Icons.check_circle, color: theme.colorScheme.primary),
+                            Icon(
+                              Icons.check_circle,
+                              color: theme.colorScheme.primary,
+                            ),
                           if (!isCurrent)
                             IconButton(
                               icon: const Icon(Icons.delete_outline, size: 20),
@@ -1198,12 +1249,13 @@ class _AccountsBottomSheetState extends State<_AccountsBottomSheet> {
       ),
     );
   }
-  
+
   String _getAccountInitial(Account account) {
     String name;
     if (account.displayName?.isNotEmpty == true) {
       name = account.displayName!;
-    } else if (account.username?.isNotEmpty == true && account.username != account.id) {
+    } else if (account.username?.isNotEmpty == true &&
+        account.username != account.id) {
       name = account.username!;
     } else {
       final idStr = account.id;

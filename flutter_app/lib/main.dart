@@ -92,7 +92,9 @@ class _E2EEPassphraseDialogState extends State<_E2EEPassphraseDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
-      title: Text(_isNew ? 'Set recovery passphrase' : 'Enter recovery passphrase'),
+      title: Text(
+        _isNew ? 'Set recovery passphrase' : 'Enter recovery passphrase',
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -101,7 +103,7 @@ class _E2EEPassphraseDialogState extends State<_E2EEPassphraseDialog> {
             Text(
               _isNew
                   ? 'This passphrase restores your encryption keys on a new device. '
-                      'Save it securely — without it, old private messages become unreadable.'
+                        'Save it securely — without it, old private messages become unreadable.'
                   : 'Enter the passphrase you set on your previous device to restore encryption keys.',
               style: theme.textTheme.bodySmall,
             ),
@@ -113,7 +115,9 @@ class _E2EEPassphraseDialogState extends State<_E2EEPassphraseDialog> {
                 labelText: 'Recovery passphrase',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (_) { if (_error != null) setState(() => _error = null); },
+              onChanged: (_) {
+                if (_error != null) setState(() => _error = null);
+              },
             ),
             if (_isNew) ...[
               const SizedBox(height: 12),
@@ -124,13 +128,19 @@ class _E2EEPassphraseDialogState extends State<_E2EEPassphraseDialog> {
                   labelText: 'Confirm passphrase',
                   border: OutlineInputBorder(),
                 ),
-                onChanged: (_) { if (_error != null) setState(() => _error = null); },
+                onChanged: (_) {
+                  if (_error != null) setState(() => _error = null);
+                },
               ),
             ],
-            if (_error != null) Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-            ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+              ),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -186,7 +196,8 @@ class _VortiAppState extends State<VortiApp> {
       final m = RegExp(r'[?&]token=([^&]+)').firstMatch(uri.toString());
       token = m?.group(1);
     }
-    if (token == null || token.isEmpty || !mounted || _api.token != null) return;
+    if (token == null || token.isEmpty || !mounted || _api.token != null)
+      return;
     if (_isLoading) {
       _pendingResetToken = token;
     } else {
@@ -211,7 +222,9 @@ class _VortiAppState extends State<VortiApp> {
       if (_api.token != null) {
         final expired = await _api.isSessionExpired();
         if (expired) {
-          ApiService.addLog('_checkAuth: session expired by inactivity, clearing credentials');
+          ApiService.addLog(
+            '_checkAuth: session expired by inactivity, clearing credentials',
+          );
           _api.clearCredentials();
         }
       }
@@ -283,14 +296,17 @@ class _VortiAppState extends State<VortiApp> {
     ApiService.addLog('_initNotifications: initialize() done');
 
     _tokenSubscription?.cancel();
-    _tokenSubscription = _notifications.onTokenRefresh.listen((token) async {
-      if (token != null && _api.token != null) {
-        await _api.registerDevice(token, 'android');
-        await _api.saveFcmToken(token);
-      }
-    }, onError: (e) {
-      ApiService.addLog('Token refresh error: $e');
-    });
+    _tokenSubscription = _notifications.onTokenRefresh.listen(
+      (token) async {
+        if (token != null && _api.token != null) {
+          await _api.registerDevice(token, 'android');
+          await _api.saveFcmToken(token);
+        }
+      },
+      onError: (e) {
+        ApiService.addLog('Token refresh error: $e');
+      },
+    );
 
     _notifications.onNavigateToChat = (chatId, data) async {
       ApiService.addLog('Notification tapped: chatId=$chatId');
@@ -352,8 +368,8 @@ class _VortiAppState extends State<VortiApp> {
           supportedLocales: AppLocalizations.supportedLocales,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           themeMode: ThemeProvider().themeMode,
-          theme: ThemeProvider().getThemeData(),
-          darkTheme: ThemeProvider().getThemeData(),
+          theme: ThemeProvider().getThemeData(brightness: Brightness.light),
+          darkTheme: ThemeProvider().getThemeData(brightness: Brightness.dark),
           home: _isLoading
               ? Scaffold(
                   body: Center(

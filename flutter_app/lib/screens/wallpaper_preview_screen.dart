@@ -23,11 +23,16 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
   String _styleLabel(wallpaper.WallpaperStyle s) {
     final l = AppLocalizations.of(context);
     switch (s) {
-      case wallpaper.WallpaperStyle.atmospheric: return l.styleAtmosphere;
-      case wallpaper.WallpaperStyle.contrast: return l.styleContrast;
-      case wallpaper.WallpaperStyle.mono: return l.styleMono;
-      case wallpaper.WallpaperStyle.vibrant: return l.styleVibrant;
-      case wallpaper.WallpaperStyle.unknown: return l.styleAuto;
+      case wallpaper.WallpaperStyle.atmospheric:
+        return l.styleAtmosphere;
+      case wallpaper.WallpaperStyle.contrast:
+        return l.styleContrast;
+      case wallpaper.WallpaperStyle.mono:
+        return l.styleMono;
+      case wallpaper.WallpaperStyle.vibrant:
+        return l.styleVibrant;
+      case wallpaper.WallpaperStyle.unknown:
+        return l.styleAuto;
     }
   }
 
@@ -69,7 +74,8 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
   Future<void> _setStyle(wallpaper.WallpaperStyle style) async {
     await _wallpaperService.setStyle(style);
     setState(() => _style = style);
-    if (_adaptiveEnabled && _wallpaperPath != null) await _applyAdaptiveColors();
+    if (_adaptiveEnabled && _wallpaperPath != null)
+      await _applyAdaptiveColors();
   }
 
   Future<void> _applyAdaptiveColors() async {
@@ -104,7 +110,10 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
         backgroundColor: colors.background,
         foregroundColor: colors.text,
         elevation: 0,
-        title: Text(AppLocalizations.of(context).wallpaperTheme, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        title: Text(
+          AppLocalizations.of(context).wallpaperTheme,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.check),
@@ -156,7 +165,8 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
       itemCount: sampleMessages.length,
-      itemBuilder: (_, i) => _buildPreviewBubble(sampleMessages[i], myBubble, theirBubble, colors),
+      itemBuilder: (_, i) =>
+          _buildPreviewBubble(sampleMessages[i], myBubble, theirBubble, colors),
     );
   }
 
@@ -168,10 +178,17 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
     return yiq >= 135 ? const Color(0xFF11141A) : Colors.white;
   }
 
-  Widget _buildPreviewBubble(_PreviewMessage msg, Color myBubble, Color theirBubble, ThemeColors colors) {
+  Widget _buildPreviewBubble(
+    _PreviewMessage msg,
+    Color myBubble,
+    Color theirBubble,
+    ThemeColors colors,
+  ) {
     final bubbleBg = msg.isMe ? myBubble : theirBubble;
     final txtColor = _getContrastTextForBubble(bubbleBg, colors);
-    final subTxtColor = _brightness(txtColor) >= 128 ? txtColor.withAlpha(140) : txtColor.withAlpha(160);
+    final subTxtColor = _brightness(txtColor) >= 128
+        ? txtColor.withAlpha(140)
+        : txtColor.withAlpha(160);
 
     return Padding(
       padding: EdgeInsets.only(
@@ -197,7 +214,14 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(msg.text, style: TextStyle(color: txtColor, fontSize: 14, fontWeight: FontWeight.w400)),
+              Text(
+                msg.text,
+                style: TextStyle(
+                  color: txtColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
               const SizedBox(height: 4),
               Align(
                 alignment: Alignment.bottomRight,
@@ -243,12 +267,25 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
               child: Column(
                 children: [
                   ListTile(
-                    title: Text(l.wallpaper, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    title: Text(
+                      l.wallpaper,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                     trailing: _wallpaperPath != null
                         ? TextButton.icon(
                             onPressed: _removeWallpaper,
-                            icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
-                            label: Text(l.remove, style: const TextStyle(color: Colors.red, fontSize: 13)),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              size: 16,
+                              color: Colors.red,
+                            ),
+                            label: Text(
+                              l.remove,
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 13,
+                              ),
+                            ),
                           )
                         : null,
                   ),
@@ -258,13 +295,22 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: _pickWallpaper,
-                        icon: const Icon(Icons.photo_library_outlined, size: 18),
-                        label: Text(_wallpaperPath != null ? l.changeBackgroundImage : l.chooseBackgroundImage),
+                        icon: const Icon(
+                          Icons.photo_library_outlined,
+                          size: 18,
+                        ),
+                        label: Text(
+                          _wallpaperPath != null
+                              ? l.changeBackgroundImage
+                              : l.chooseBackgroundImage,
+                        ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: primary,
                           side: BorderSide(color: primary),
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
@@ -300,12 +346,32 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(l.paletteStyle, style: TextStyle(color: colors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500)),
+                                Text(
+                                  l.paletteStyle,
+                                  style: TextStyle(
+                                    color: colors.textSecondary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
                                 if (_detectedStyleName != null)
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(color: colors.background, borderRadius: BorderRadius.circular(6)),
-                                    child: Text(l.autoStyle(_detectedStyleName!), style: TextStyle(color: primary, fontSize: 11, fontWeight: FontWeight.w600)),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: colors.background,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      l.autoStyle(_detectedStyleName!),
+                                      style: TextStyle(
+                                        color: primary,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ),
                               ],
                             ),
@@ -314,40 +380,65 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
                               height: 38,
                               child: ListView(
                                 scrollDirection: Axis.horizontal,
-                                children: wallpaper.WallpaperStyle.values.where((s) => s != wallpaper.WallpaperStyle.unknown).map((style) {
-                                  final label = _styleLabel(style);
-                                  final icon = _styleIcons[style]!;
-                                  final isSelected = style == _style;
+                                children: wallpaper.WallpaperStyle.values
+                                    .where(
+                                      (s) =>
+                                          s != wallpaper.WallpaperStyle.unknown,
+                                    )
+                                    .map((style) {
+                                      final label = _styleLabel(style);
+                                      final icon = _styleIcons[style]!;
+                                      final isSelected = style == _style;
 
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: InkWell(
-                                      onTap: () => _setStyle(style),
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                                        decoration: BoxDecoration(
-                                          color: isSelected ? primary : colors.surface,
-                                          borderRadius: BorderRadius.circular(8),
+                                      return Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: 8,
                                         ),
-                                        child: Row(
-                                          children: [
-                                            Icon(icon, size: 16, color: isSelected ? colors.surface : colors.textSecondary),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              label,
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                                                color: isSelected ? colors.surface : colors.text,
-                                              ),
+                                        child: InkWell(
+                                          onTap: () => _setStyle(style),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
                                             ),
-                                          ],
+                                            decoration: BoxDecoration(
+                                              color: isSelected
+                                                  ? primary
+                                                  : colors.surface,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  icon,
+                                                  size: 16,
+                                                  color: isSelected
+                                                      ? colors.surface
+                                                      : colors.textSecondary,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  label,
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: isSelected
+                                                        ? FontWeight.w600
+                                                        : FontWeight.w400,
+                                                    color: isSelected
+                                                        ? colors.surface
+                                                        : colors.text,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
+                                      );
+                                    })
+                                    .toList(),
                               ),
                             ),
                           ],
@@ -368,31 +459,62 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
               child: Column(
                 children: [
                   ListTile(
-                    title: Text(l.customColors, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    title: Text(
+                      l.customColors,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     child: Column(
                       children: [
-                        _buildColorRow('Accent', widget.themeProvider.primaryColor, (c) {
-                          widget.themeProvider.setCustomColor('primary', c);
-                        }, colors),
+                        _buildColorRow(
+                          'Accent',
+                          widget.themeProvider.primaryColor,
+                          (c) {
+                            widget.themeProvider.setCustomColor('primary', c);
+                          },
+                          colors,
+                        ),
                         const SizedBox(height: 8),
-                        _buildColorRow('Background', widget.themeProvider.backgroundColor, (c) {
-                          widget.themeProvider.setCustomColor('background', c);
-                        }, colors),
+                        _buildColorRow(
+                          'Background',
+                          widget.themeProvider.backgroundColor,
+                          (c) {
+                            widget.themeProvider.setCustomColor(
+                              'background',
+                              c,
+                            );
+                          },
+                          colors,
+                        ),
                         const SizedBox(height: 8),
-                        _buildColorRow('Surface', widget.themeProvider.surfaceColor, (c) {
-                          widget.themeProvider.setCustomColor('surface', c);
-                        }, colors),
+                        _buildColorRow(
+                          'Surface',
+                          widget.themeProvider.surfaceColor,
+                          (c) {
+                            widget.themeProvider.setCustomColor('surface', c);
+                          },
+                          colors,
+                        ),
                         const SizedBox(height: 8),
-                        _buildColorRow('Text', widget.themeProvider.textColor, (c) {
+                        _buildColorRow('Text', widget.themeProvider.textColor, (
+                          c,
+                        ) {
                           widget.themeProvider.setCustomColor('text', c);
                         }, colors),
                         const SizedBox(height: 8),
-                        _buildColorRow('Text Secondary', widget.themeProvider.textSecondaryColor, (c) {
-                          widget.themeProvider.setCustomColor('textsecondary', c);
-                        }, colors),
+                        _buildColorRow(
+                          'Text Secondary',
+                          widget.themeProvider.textSecondaryColor,
+                          (c) {
+                            widget.themeProvider.setCustomColor(
+                              'textSecondary',
+                              c,
+                            );
+                          },
+                          colors,
+                        ),
                       ],
                     ),
                   ),
@@ -406,7 +528,12 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
     );
   }
 
-  Widget _buildColorRow(String label, Color currentColor, Function(Color) onPicked, ThemeColors colors) {
+  Widget _buildColorRow(
+    String label,
+    Color currentColor,
+    Function(Color) onPicked,
+    ThemeColors colors,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -425,11 +552,22 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: colors.text)),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: colors.text,
+              ),
+            ),
           ),
           IconButton(
             onPressed: () => _showColorPicker(currentColor, onPicked),
-            icon: Icon(Icons.edit_outlined, size: 18, color: colors.textSecondary),
+            icon: Icon(
+              Icons.edit_outlined,
+              size: 18,
+              color: colors.textSecondary,
+            ),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
           ),
@@ -454,7 +592,9 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
           final c = HSLColor.fromAHSL(1, hue, saturation, lightness).toColor();
           return Padding(
             padding: EdgeInsets.only(
-              left: 20, right: 20, top: 20,
+              left: 20,
+              right: 20,
+              top: 20,
               bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
             ),
             child: Column(
@@ -464,29 +604,63 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(l.pickColor, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    Text(
+                      l.pickColor,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     Container(
-                      width: 36, height: 36,
-                      decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(8)),
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: c,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
-                Text(l.hue, style: TextStyle(fontSize: 12, color: widget.themeProvider.colors.textSecondary)),
+                Text(
+                  l.hue,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: widget.themeProvider.colors.textSecondary,
+                  ),
+                ),
                 Slider(
-                  value: hue, min: 0, max: 360,
+                  value: hue,
+                  min: 0,
+                  max: 360,
                   activeColor: widget.themeProvider.primaryColor,
                   onChanged: (v) => setModalState(() => hue = v),
                 ),
-                Text(l.saturation, style: TextStyle(fontSize: 12, color: widget.themeProvider.colors.textSecondary)),
+                Text(
+                  l.saturation,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: widget.themeProvider.colors.textSecondary,
+                  ),
+                ),
                 Slider(
-                  value: saturation, min: 0, max: 1,
+                  value: saturation,
+                  min: 0,
+                  max: 1,
                   activeColor: widget.themeProvider.primaryColor,
                   onChanged: (v) => setModalState(() => saturation = v),
                 ),
-                Text(l.lightness, style: TextStyle(fontSize: 12, color: widget.themeProvider.colors.textSecondary)),
+                Text(
+                  l.lightness,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: widget.themeProvider.colors.textSecondary,
+                  ),
+                ),
                 Slider(
-                  value: lightness, min: 0, max: 1,
+                  value: lightness,
+                  min: 0,
+                  max: 1,
                   activeColor: widget.themeProvider.primaryColor,
                   onChanged: (v) => setModalState(() => lightness = v),
                 ),
