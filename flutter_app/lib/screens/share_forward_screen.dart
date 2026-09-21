@@ -96,6 +96,8 @@ class _ShareForwardScreenState extends State<ShareForwardScreen> {
   Future<void> _sendText(Chat chat, String text) async {
     String sendText = text;
     String? keyType;
+    String? senderKeyId;
+    String? recipientKeyId;
     if (chat.type == 'direct' && text.isNotEmpty) {
       final currentUserId = widget.api.userId;
       final otherUserId = chat.participants.firstWhere(
@@ -107,10 +109,21 @@ class _ShareForwardScreenState extends State<ShareForwardScreen> {
         if (box != null) {
           sendText = CryptoService.encryptMessage(text, box);
           keyType = 'e2ee_v1';
+          senderKeyId = CryptoService.ourKeyId;
+          recipientKeyId = CryptoService.latestPeerKeyId(otherUserId);
+          if (recipientKeyId == null) {
+            final fresh = await CryptoService.getBox(otherUserId, widget.api, force: true);
+            if (fresh != null) {
+              recipientKeyId = CryptoService.latestPeerKeyId(otherUserId);
+            }
+          }
         }
       } catch (_) {}
     }
-    widget.api.sendMessage(chat.id, sendText, keyType: keyType);
+    widget.api.sendMessage(chat.id, sendText,
+        keyType: keyType,
+        senderKeyId: senderKeyId,
+        recipientKeyId: recipientKeyId);
   }
 
   Future<bool> _uploadAndSendFile(Chat chat, SharedFileInfo info) async {
@@ -126,8 +139,7 @@ class _ShareForwardScreenState extends State<ShareForwardScreen> {
     }
     if (result == null) return false;
 
-    widget.api.sendFile(chat.id, result['fileId']!, mimeType: result['mimeType']);
-    return true;
+    return widget.api.sendFile(chat.id, result['fileId']!, mimeType: result['mimeType']);
   }
 
   void _cleanupFiles() {

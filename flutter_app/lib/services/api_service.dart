@@ -24,7 +24,24 @@ class FileTooLargeException implements Exception {
 class ApiService {
   static const String baseUrl = 'https://wlvorti.ru:3000';
   static const String wsUrl = 'wss://wlvorti.ru:3000';
+  static const String appVersion = '1.0.5';
   static final List<String> logs = [];
+
+  static String get clientPlatform {
+    try {
+      return Platform.operatingSystem;
+    } catch (_) {
+      return 'unknown';
+    }
+  }
+
+  /// Пара накладных данных о версии, отправляется при входе/регистрации
+  /// и по WebSocket (clientInfo) после подключения.
+  static Map<String, dynamic> clientInfoPayload() => {
+        'clientVersion': appVersion,
+        'platform': clientPlatform,
+        'deviceName': '${clientPlatform}_${appVersion}',
+      };
 
   static void init() {
     addLog('App started');
@@ -87,6 +104,12 @@ class ApiService {
   String? get userId => _userId;
   Set<String> get onlineUsers => Set.unmodifiable(_onlineUsers);
   bool isUserOnline(String userId) => _onlineUsers.contains(userId);
+
+  /// Refreshes the JWT token and returns the fresh token (or null on failure).
+  Future<String?> refreshToken() async {
+    final refreshed = await _tryRefreshToken();
+    return refreshed ? _token : null;
+  }
 
   Future<void> saveCredentials(String token, String userId) async {
     _token = token;
@@ -175,8 +198,11 @@ class ApiService {
     if (lastActive == null) return false;
     final lastActiveMs = int.tryParse(lastActive);
     if (lastActiveMs == null) return false;
-    final weekAgo = DateTime.now().subtract(const Duration(days: 7)).millisecondsSinceEpoch;
-    return lastActiveMs < weekAgo;
+    final sixMonthsAgo =
+        DateTime.now()
+            .subtract(const Duration(days: 180))
+            .millisecondsSinceEpoch;
+    return lastActiveMs < sixMonthsAgo;
   }
 
   Future<List<Account>> getAccounts() async {
@@ -391,7 +417,11 @@ class ApiService {
       final res = await _client.post(
         Uri.parse('$baseUrl/register/email'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'password': password}),
+        body: jsonEncode({
+          'email': email,
+          'password': password,
+          ...clientInfoPayload(),
+        }),
       );
 
       ApiService.addLog('Register/email response: ${res.statusCode}');
@@ -421,7 +451,11 @@ class ApiService {
       final res = await _client.post(
         Uri.parse('$baseUrl/register'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'username': username, 'password': password}),
+        body: jsonEncode({
+          'username': username,
+          'password': password,
+          ...clientInfoPayload(),
+        }),
       );
 
       ApiService.addLog('Register response: ${res.statusCode}');
@@ -447,7 +481,11 @@ class ApiService {
       final res = await _client.post(
         Uri.parse('$baseUrl/login'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'username': username, 'password': password}),
+        body: jsonEncode({
+          'username': username,
+          'password': password,
+          ...clientInfoPayload(),
+        }),
       );
 
       ApiService.addLog('Login response: ${res.statusCode}');
@@ -493,7 +531,10 @@ class ApiService {
       final res = await _client.post(
         Uri.parse('$baseUrl/auth/google'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'idToken': idToken}),
+        body: jsonEncode({
+          'idToken': idToken,
+          ...clientInfoPayload(),
+        }),
       );
 
       ApiService.addLog('Google auth response: ${res.statusCode}');
@@ -770,6 +811,21 @@ class ApiService {
     return data['chatId'];
   }
 
+  /// Получает (создаёт при необходимости) личный чат "Избранное" пользователя.
+  Future<String?> getOrCreateSavedChat() async {
+    try {
+      final res = await _requestWithRefresh(() => _client.get(
+        Uri.parse('$baseUrl/chats/saved'),
+        headers: _headers,
+      ));
+      final data = jsonDecode(res.body);
+      return data['chatId'];
+    } catch (e) {
+      ApiService.addLog('getOrCreateSavedChat error: $e');
+      return null;
+    }
+  }
+
   Future<int> getMessageCount(String chatId) async {
     try {
       final res = await _requestWithRefresh(() => _client.get(
@@ -840,11 +896,25 @@ class ApiService {
       _wsChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
       _wsStreamSubscription = _wsChannel!.stream.listen(
-        (data) {
+        (data) async {
           final msg = jsonDecode(data);
 
           if (msg['type'] == 'connected') {
             CryptoService.uploadPublicKey(this);
+            _wsChannel?.sink.add(
+              jsonEncode({
+                'type': 'clientInfo',
+                ...clientInfoPayload(),
+              }),
+            );
+          }
+
+          if (msg['type'] == 'keyReceived') {
+            final userId = msg['userId'] as String?;
+            final keyId = msg['keyId'] as String?;
+            if (userId == CryptoService.currentUserId && keyId != null) {
+              await CryptoService.setOurKeyId(keyId);
+            }
           }
 
           if (msg['type'] == 'online') {
@@ -991,7 +1061,7 @@ class ApiService {
     });
   }
 
-  Future<void> sendMessageViaWs(String chatId, String text, {String? replyTo, String? tempId, String? keyType}) async {
+  Future<void> sendMessageViaWs(String chatId, String text, {String? replyTo, String? tempId, String? keyType, String? senderKeyId, String? recipientKeyId}) async {
     if (_wsChannel?.sink != null) {
       try {
         _wsChannel!.sink.add(
@@ -1002,6 +1072,8 @@ class ApiService {
             if (replyTo != null) 'replyTo': replyTo,
             if (tempId != null) 'tempId': tempId,
             if (keyType != null) 'keyType': keyType,
+            if (senderKeyId != null) 'senderKeyId': senderKeyId,
+            if (recipientKeyId != null) 'recipientKeyId': recipientKeyId,
           }),
         );
         ApiService.addLog('sendMessageViaWs: sent tempId=$tempId chatId=$chatId keyType=$keyType');
@@ -1012,15 +1084,15 @@ class ApiService {
     } else {
       ApiService.addLog('sendMessageViaWs: WS null for chatId=$chatId tempId=$tempId, falling back to REST');
     }
-    await sendMessageViaRest(chatId, text, replyTo: replyTo, tempId: tempId, keyType: keyType);
+    await sendMessageViaRest(chatId, text, replyTo: replyTo, tempId: tempId, keyType: keyType, senderKeyId: senderKeyId, recipientKeyId: recipientKeyId);
   }
 
-  Future<void> sendMessageViaRest(String chatId, String text, {String? replyTo, String? tempId, String? keyType}) async {
+  Future<void> sendMessageViaRest(String chatId, String text, {String? replyTo, String? tempId, String? keyType, String? senderKeyId, String? recipientKeyId}) async {
     try {
       final res = await _client.post(
         Uri.parse('$baseUrl/chats/$chatId/messages'),
         headers: _headers,
-        body: jsonEncode({'text': text, if (replyTo != null) 'replyTo': replyTo, if (keyType != null) 'key_type': keyType}),
+        body: jsonEncode({'text': text, if (replyTo != null) 'replyTo': replyTo, if (keyType != null) 'key_type': keyType, if (senderKeyId != null) 'sender_key_id': senderKeyId, if (recipientKeyId != null) 'recipient_key_id': recipientKeyId}),
       );
       if (res.statusCode == 200) {
         // Don't call onMessage here - server will broadcast it back via WebSocket
@@ -1032,8 +1104,8 @@ class ApiService {
     }
   }
 
-  void sendMessage(String chatId, String text, {String? replyTo, String? tempId, String? keyType}) {
-    sendMessageViaWs(chatId, text, replyTo: replyTo, tempId: tempId, keyType: keyType);
+  void sendMessage(String chatId, String text, {String? replyTo, String? tempId, String? keyType, String? senderKeyId, String? recipientKeyId}) {
+    sendMessageViaWs(chatId, text, replyTo: replyTo, tempId: tempId, keyType: keyType, senderKeyId: senderKeyId, recipientKeyId: recipientKeyId);
   }
 
   void sendTyping(String chatId, bool isTyping) {
@@ -1091,16 +1163,36 @@ class ApiService {
 
   // ==================== Files ====================
 
-  Future<Map<String, String>?> uploadFile(File file, {String? mimeType}) async {
+  Future<Map<String, String>?> uploadFile(
+    File file, {
+    String? mimeType,
+    void Function(double progress)? onProgress,
+  }) async {
+    final totalSize = await file.length();
+
+    int sentBytes = 0;
+    Stream<List<int>> countBytes() {
+      return file.openRead().map((List<int> chunk) {
+        sentBytes += chunk.length;
+        if (onProgress != null && totalSize > 0) {
+          onProgress(sentBytes / totalSize);
+        }
+        return chunk;
+      });
+    }
+
     final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/upload'));
 
     request.headers.addAll({'Authorization': 'Bearer $_token'});
 
     final contentType = mimeType ?? _getMimeType(file.path);
+    final fileName = file.path.split(Platform.pathSeparator).last;
     request.files.add(
-      await http.MultipartFile.fromPath(
+      http.MultipartFile(
         'file',
-        file.path,
+        countBytes(),
+        totalSize,
+        filename: fileName,
         contentType: MediaType.parse(contentType),
       ),
     );
@@ -1263,7 +1355,7 @@ class ApiService {
     }
   }
 
-  Future<void> sendFileViaWs(String chatId, String fileId, {String? replyTo, String? mimeType}) async {
+  Future<bool> sendFileViaWs(String chatId, String fileId, {String? replyTo, String? mimeType, String? tempId}) async {
     if (_wsChannel?.sink != null) {
       try {
         _wsChannel!.sink.add(
@@ -1273,20 +1365,21 @@ class ApiService {
             'fileId': fileId,
             if (replyTo != null) 'replyTo': replyTo,
             if (mimeType != null) 'fileMimeType': mimeType,
+            if (tempId != null) 'tempId': tempId,
           }),
         );
         ApiService.addLog('sendFileViaWs: sent fileId=$fileId chatId=$chatId');
-        return;
+        return true;
       } catch (e) {
         ApiService.addLog('sendFileViaWs: WS send error for chatId=$chatId fileId=$fileId: $e');
       }
     } else {
       ApiService.addLog('sendFileViaWs: WS null for chatId=$chatId fileId=$fileId, falling back to REST');
     }
-    await sendFileViaRest(chatId, fileId, replyTo: replyTo, mimeType: mimeType);
+    return false;
   }
 
-  Future<void> sendFileViaRest(String chatId, String fileId, {String? replyTo, String? mimeType}) async {
+  Future<bool> sendFileViaRest(String chatId, String fileId, {String? replyTo, String? mimeType}) async {
     try {
       final res = await _client.post(
         Uri.parse('$baseUrl/chats/$chatId/messages'),
@@ -1299,21 +1392,27 @@ class ApiService {
       );
       if (res.statusCode == 200) {
         // Don't call onMessage here - server will broadcast it back via WebSocket
-      } else {
-        ApiService.addLog('sendFileViaRest: HTTP ${res.statusCode} for chatId=$chatId fileId=$fileId: ${res.body}');
+        return true;
       }
+      ApiService.addLog('sendFileViaRest: HTTP ${res.statusCode} for chatId=$chatId fileId=$fileId: ${res.body}');
+      return false;
     } catch (e) {
       ApiService.addLog('sendFileViaRest: exception for chatId=$chatId fileId=$fileId: $e');
+      return false;
     }
   }
 
-  void sendFile(
+  Future<bool> sendFile(
     String chatId,
     String fileId, {
     String? replyTo,
     String? mimeType,
-  }) {
-    sendFileViaWs(chatId, fileId, replyTo: replyTo, mimeType: mimeType);
+    String? tempId,
+  }) async {
+    if (await sendFileViaWs(chatId, fileId, replyTo: replyTo, mimeType: mimeType, tempId: tempId)) {
+      return true;
+    }
+    return sendFileViaRest(chatId, fileId, replyTo: replyTo, mimeType: mimeType);
   }
 
   void sendSticker(String chatId, String stickerId, {String? tempId}) {

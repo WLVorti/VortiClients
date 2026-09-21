@@ -12,6 +12,7 @@ import '../services/theme_provider.dart';
 import '../services/locale_provider.dart';
 import '../services/wallpaper_service.dart';
 import '../services/crypto_service.dart';
+import '../services/settings_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/falling_icons_background.dart';
 import '../models/models.dart';
@@ -46,6 +47,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _emailController = TextEditingController();
   final _tagsController = TextEditingController();
   final _themeProvider = ThemeProvider();
+  bool _autoSaveMedia = false;
 
   @override
   void initState() {
@@ -62,6 +64,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadProfile();
     _loadAccounts();
     _emailController.addListener(_validateEmail);
+    _loadAutoSaveSetting();
+  }
+
+  Future<void> _loadAutoSaveSetting() async {
+    final settings = SettingsProvider();
+    await settings.load();
+    if (mounted && settings.autoSaveMedia != _autoSaveMedia) {
+      setState(() => _autoSaveMedia = settings.autoSaveMedia);
+    }
+  }
+
+  Future<void> _toggleAutoSaveMedia(bool value) async {
+    setState(() => _autoSaveMedia = value);
+    final settings = SettingsProvider();
+    await settings.setAutoSaveMedia(value);
   }
 
   void _validateEmail() {
@@ -553,6 +570,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 );
               },
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: SwitchListTile(
+              value: _autoSaveMedia,
+              onChanged: _toggleAutoSaveMedia,
+              secondary: CircleAvatar(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                child: const Icon(
+                  Icons.photo_library,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              title: Text(AppLocalizations.of(context).autoSaveMedia),
+              subtitle: Text(
+                AppLocalizations.of(context).autoSaveMediaSubtitle,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
           const SizedBox(height: 16),

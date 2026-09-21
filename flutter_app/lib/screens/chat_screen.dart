@@ -13,13 +13,15 @@ import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:audio_waveforms/audio_waveforms.dart';
+import 'package:audio_waveforms/audio_waveforms.dart' hide PlayerState;
 import '../widgets/attachment_picker_widget.dart';
 import 'sticker_pack_manager_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/avatar_utils.dart';
+import '../utils/kolobok_utils.dart';
+import '../utils/save_file_utils.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/message_cache.dart';
@@ -27,10 +29,12 @@ import '../services/mute_service.dart';
 import '../services/crypto_service.dart';
 import '../services/wallpaper_service.dart';
 import '../services/notification_service.dart';
+import '../services/settings_provider.dart';
 import '../models/models.dart';
 import 'user_profile_screen.dart';
 import 'group_info_screen.dart';
 import 'image_viewer_screen.dart';
+import 'forward_message_screen.dart';
 
 const int _maxMessageLength = 10000;
 
@@ -61,7 +65,7 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
-  final _messageController = TextEditingController();
+  final _messageController = _KolobokTextEditingController();
   final _scrollController = ScrollController();
   final _editController = TextEditingController();
   List<Message> _messages = [];
@@ -70,8 +74,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _hasOlderMessages = false;
   bool _isLoadingMore = false;
   bool _isUploading = false;
-  double _uploadProgress = 0.0;
-  String _uploadStatus = '';
+  final Map<String, double> _uploadProgresses = {};
+  final Map<String, File> _uploadTempFiles = {};
+  final Map<String, Timer> _resolveTimers = {};
+  final Map<String, double> _lastReportedProgress = {};
+  final Map<String, int> _lastReportTimeMs = {};
   bool _isEditing = false;
   bool _isOtherTyping = false;
   bool _isOtherOnline = false;
@@ -88,6 +95,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _isAppActive = true;
   bool _isRecording = false;
   bool _shouldCancelRecording = false;
+  bool _recordingLocked = false;
+  bool _lockFromThisGesture = false;
+  bool _micTouching = false;
+  Offset _micDrag = Offset.zero;
   DateTime? _touchDownTime;
   DateTime? _recordingStartTime;
   RecorderController? _recorderController;
@@ -96,6 +107,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Timer? _recordingTimer;
   final Map<String, String> _participantNames = {};
   final Map<String, AudioPlayer> _audioPlayers = {};
+  String? _activeAudioId;
+  String _activeAudioLabel = '';
+  StreamSubscription<Duration>? _activeAudioPosSub;
+  StreamSubscription<Duration?>? _activeAudioDurationSub;
+  StreamSubscription<PlayerState>? _activeAudioStateSub;
+  Duration _activeAudioPosition = Duration.zero;
+  Duration _activeAudioDuration = Duration.zero;
+  bool _activeAudioPlaying = false;
   final Map<String, String> _decryptedTexts = {};
   bool _isMuted = false;
   bool _showEmojiPanel = false;
@@ -103,6 +122,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String? _pendingFileName;
   String? _pendingFileMimeType;
   String? _wallpaperPath;
+  bool _autoSaveMediaEnabled = false;
 
   final _threeDotKey = GlobalKey<State>();
 
@@ -112,6 +132,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   static const List<String> _reactionEmojis = [
     '👍', '❤️', '😂', '😮', '😢', '😡',
   ];
+
+  static const List<String> _kolobokGifs = kolobokGifs;
 
   String _quickReactionEmoji = '❤️';
 
@@ -128,6 +150,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  Future<void> _loadAutoSaveMedia() async {
+    final prefs = await SharedPreferences.getInstance();
+    _autoSaveMediaEnabled = prefs.getBool('auto_save_media') ?? false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -135,6 +162,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _currentUserId = widget.api.userId ?? '';
     _wallpaperPath = WallpaperService().wallpaperPath;
     _loadQuickReaction();
+    _loadAutoSaveMedia();
     _loadCachedMessages();
     _loadMessages();
     _loadReactions();
@@ -307,6 +335,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _isRecording = true;
       _recordingStartTime = DateTime.now();
       _recordingSeconds = 0;
+      _recordingLocked = false;
+      _lockFromThisGesture = false;
     });
 
     final dir = await getTemporaryDirectory();
@@ -316,7 +346,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final status = await Permission.microphone.request();
     if (status != PermissionStatus.granted) {
       _showSnackBar(AppLocalizations.of(context).microphonePermissionDenied);
-      setState(() => _isRecording = false);
+      setState(() {
+        _isRecording = false;
+        _recordingLocked = false;
+        _lockFromThisGesture = false;
+      });
       _recorderController = null;
       return;
     }
@@ -334,7 +368,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } catch (e) {
       ApiService.addLog('_startRecording: error=$e');
       _showSnackBar(AppLocalizations.of(context).failedToStartRecording);
-      setState(() => _isRecording = false);
+      setState(() {
+        _isRecording = false;
+        _recordingLocked = false;
+        _lockFromThisGesture = false;
+      });
     }
   }
 
@@ -368,23 +406,40 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
         setState(() => _isUploading = true);
 
+        final tempId = 'up_${DateTime.now().millisecondsSinceEpoch}';
+        setState(() {
+          _messages.add(_buildTempFileMessage(tempId, file));
+          _uploadProgresses[tempId] = 0.0;
+          _uploadTempFiles[tempId] = file;
+        });
+
         try {
-          final uploadResult = await widget.api.uploadFile(file);
+          final uploadResult = await widget.api.uploadFile(
+            file,
+            onProgress: (p) => _reportUploadProgress(tempId, p),
+          );
           if (uploadResult != null) {
-            widget.api.sendFile(
+            final sent = await widget.api.sendFile(
               widget.chatId,
               uploadResult['fileId']!,
               mimeType: uploadResult['mimeType'],
+              tempId: tempId,
             );
+            if (!sent) {
+              _showSnackBar(AppLocalizations.of(context).uploadFailed);
+              _removeUploadTemp(tempId);
+            }
           } else {
-            _showSnackBar('Upload failed');
+            _showSnackBar(AppLocalizations.of(context).uploadFailed);
+            _removeUploadTemp(tempId);
           }
         } catch (e) {
           if (e is FileTooLargeException) {
             _showSnackBar(AppLocalizations.of(context).fileTooLarge);
           } else {
-            _showSnackBar('Upload failed');
+            _showSnackBar(AppLocalizations.of(context).uploadFailed);
           }
+          _removeUploadTemp(tempId);
         }
 
         setState(() => _isUploading = false);
@@ -401,15 +456,34 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _stopRecording();
     }
     _shouldCancelRecording = false;
+    _recordingLocked = false;
+    _lockFromThisGesture = false;
+  }
+
+  void _cancelLockedRecording() {
+    setState(() {
+      _recordingLocked = false;
+      _lockFromThisGesture = false;
+      _shouldCancelRecording = false;
+    });
+    _stopRecording(cancel: true);
   }
 
   Timer? _holdTimer;
 
   void _handleMicDown() {
+    _micDrag = Offset.zero;
+    if (_recordingLocked) {
+      // Editing the mic while already locked: the release will stop & send.
+      _lockFromThisGesture = false;
+      _touchDownTime = DateTime.now();
+      return;
+    }
     _touchDownTime = DateTime.now();
     _holdTimer?.cancel();
     _holdTimer = Timer(const Duration(milliseconds: 100), () {
-      _shouldCancelRecording = false;
+      if (!mounted) return;
+      setState(() => _shouldCancelRecording = false);
       _startRecording();
     });
   }
@@ -417,9 +491,34 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _handleMicUp() {
     _holdTimer?.cancel();
     _holdTimer = null;
+    setState(() {
+      _micTouching = false;
+      _micDrag = Offset.zero;
+    });
     final dt = _touchDownTime;
     _touchDownTime = null;
     if (dt == null) return;
+
+    if (_recordingLocked) {
+      if (_lockFromThisGesture) {
+        // Just released after swiping up into the locked mode – keep recording.
+        _lockFromThisGesture = false;
+        return;
+      }
+      // Mic pressed again: stop & send (or cancel if swiped left).
+      setState(() {
+        _recordingLocked = false;
+        _lockFromThisGesture = false;
+      });
+      if (_shouldCancelRecording) {
+        _shouldCancelRecording = false;
+        _stopRecording(cancel: true);
+      } else {
+        _stopRecording();
+      }
+      return;
+    }
+
     if (DateTime.now().difference(dt) < const Duration(milliseconds: 100)) {
       // quick tap – do nothing
     } else {
@@ -553,10 +652,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     debugPrint(
       '[_handleNewMessage] ABOUT TO setState messageId=$messageId tempId=$tempId messages.len=${_messages.length}',
     );
+    var replacedTemp = false;
     setState(() {
       // 1) Remove any existing copy by tempId OR real messageId (dedup)
       if (tempId != null) {
+        final before = _messages.length;
         _messages.removeWhere((m) => m.id == tempId);
+        _uploadProgresses.remove(tempId);
+        _uploadTempFiles.remove(tempId);
+        _resolveTimers.remove(tempId)?.cancel();
+        replacedTemp = before != _messages.length;
       }
       _messages.removeWhere((m) => m.id == messageId);
 
@@ -599,7 +704,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       widget.onMessagesRead?.call();
     }
 
-    if (_isNearBottom) _scrollToBottom(force: true);
+    if (userId != _currentUserId && _autoSaveMediaEnabled && _isMediaMessage(message)) {
+      _saveFile(message, silent: true);
+    }
+
+    // If this broadcast replaces our own temp upload bubble, the list keeps its
+    // position — skip the forced jump to avoid a visible flash.
+    if (_isNearBottom && !replacedTemp) _scrollToBottom(force: true);
   }
 
   void _handleMessageEdit(Map<String, dynamic> msg) {
@@ -641,7 +752,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     if (failedTempId != null && mounted) {
       // Remove failed optimistic message from UI
-      setState(() => _messages.removeWhere((m) => m.id == failedTempId));
+      setState(() {
+        _messages.removeWhere((m) => m.id == failedTempId);
+        _uploadProgresses.remove(failedTempId);
+        _uploadTempFiles.remove(failedTempId);
+      });
       _decryptedTexts.remove(failedTempId);
 
       // Restore text for retry
@@ -866,8 +981,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (actuallyAdded.any((m) => m.userId != _currentUserId)) {
         widget.onMessagesRead?.call();
       }
-      MessageCache.saveMessages(widget.chatId, actuallyAdded);
-      if (_isNearBottom) _scrollToBottom(force: true);
+MessageCache.saveMessages(widget.chatId, actuallyAdded);
+    if (_isNearBottom) _scrollToBottom(force: true);
     } catch (_) {}
   }
 
@@ -928,6 +1043,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _navigateToProfileOrGroup() {
+    // Личный чат "Избранное" — не открываем профиль/группу
+    if (widget.chatType == 'saved') return;
     if (widget.otherUserId != null) {
       Navigator.push(
         context,
@@ -973,16 +1090,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     // Upload and send pending file first
     if (hasPendingFile) {
+      final tempId = 'up_${DateTime.now().millisecondsSinceEpoch}';
       setState(() {
         _isUploading = true;
-        _uploadProgress = 0.0;
-        _uploadStatus = AppLocalizations.of(context).starting;
+        _messages.add(_buildTempFileMessage(tempId, _pendingFile!));
+        _uploadProgresses[tempId] = 0.0;
+        _uploadTempFiles[tempId] = _pendingFile!;
       });
       try {
         final fileSize = await _pendingFile!.length();
-        final sizeMb = (fileSize / (1024 * 1024)).toStringAsFixed(1);
         if (fileSize > 1024 * 1024 * 1024) {
           _showSnackBar(AppLocalizations.of(context).fileTooLarge);
+          _removeUploadTemp(tempId);
           setState(() => _isUploading = false);
           return;
         }
@@ -990,30 +1109,40 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             _pendingFileMimeType != null &&
             _pendingFileMimeType!.startsWith('video/') &&
             fileSize > 5 * 1024 * 1024;
-        final l = AppLocalizations.of(context);
+        void report(double p) => _reportUploadProgress(tempId, p);
         final uploadResult = useChunked
             ? await widget.api.uploadFileChunked(
                 _pendingFile!,
-                onProgress: (p) => setState(() {
-                  _uploadProgress = p;
-                  _uploadStatus = l.uploadProgress(
-                    (p * 100).toStringAsFixed(0),
-                    sizeMb,
-                  );
-                }),
+                onProgress: report,
               )
-            : await widget.api.uploadFile(_pendingFile!);
+            : await widget.api.uploadFile(_pendingFile!, onProgress: report);
         if (uploadResult != null) {
-          setState(() => _uploadStatus = l.sending);
-          widget.api.sendFile(
+          if (mounted) setState(() => _uploadProgresses[tempId] = 1.0);
+          // Even if the widget is unmounted, still send the file message so
+          // the upload isn't lost when the user leaves mid-upload.
+          final sent = await widget.api.sendFile(
             widget.chatId,
             uploadResult['fileId']!,
             replyTo: replyTo,
             mimeType: uploadResult['mimeType'],
+            tempId: tempId,
           );
+          if (!sent) {
+            _scheduleUploadResolve(tempId);
+            if (mounted) {
+              _showSnackBar(AppLocalizations.of(context).uploadFailed);
+              _removeUploadTemp(tempId);
+              setState(() => _isUploading = false);
+            }
+            return;
+          }
+          _scheduleUploadResolve(tempId);
         } else {
-          _showSnackBar(AppLocalizations.of(context).uploadFailed);
-          setState(() => _isUploading = false);
+          if (mounted) {
+            _showSnackBar(AppLocalizations.of(context).uploadFailed);
+            _removeUploadTemp(tempId);
+            setState(() => _isUploading = false);
+          }
           return;
         }
       } catch (e) {
@@ -1022,6 +1151,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         } else {
           _showSnackBar(AppLocalizations.of(context).uploadFailed);
         }
+        _removeUploadTemp(tempId);
         setState(() => _isUploading = false);
         return;
       }
@@ -1107,6 +1237,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     widget.api.sendSticker(widget.chatId, sticker.id, tempId: tempId);
     _scrollToBottom(force: true);
   }
+
+  void _insertKolobok(String baseName) {
+    final index = _kolobokGifs.indexOf(baseName);
+    final marker = index >= 0 ? ':k$index:' : '::kolobok:$baseName::';
+    final text = _messageController.text;
+    final sel = _messageController.selection;
+    final pos = sel.isValid ? sel.start : text.length;
+    final newText = text.substring(0, pos) + marker + text.substring(pos);
+    _messageController.text = newText;
+    _messageController.selection = TextSelection.collapsed(offset: pos + marker.length);
+    setState(() {});
+  }
+
+  String? _kolobokAssetFromMarker(String marker) =>
+      _kolobokAssetForMarker(marker, _kolobokGifs);
 
   void _viewStickerPack(String packId) async {
     final pack = await widget.api.getStickerPack(packId);
@@ -1213,6 +1358,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
+  void _forwardMessage(Message msg) {
+    final plain = _decryptedTexts[msg.id];
+    final toForward = plain != null ? msg.copyWith(plainText: plain) : msg;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            ForwardMessageScreen(api: widget.api, message: toForward),
+      ),
+    );
+  }
+
   void _startEdit(Message msg) {
     setState(() {
       _isEditing = true;
@@ -1293,34 +1450,67 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _showAttachmentOptions() async {
     final results = await AttachmentPickerWidget.show(context);
-    if (results == null || !mounted) return;
+    if (results == null || results.isEmpty || !mounted) return;
+    final l = AppLocalizations.of(context);
+
+    setState(() => _isUploading = true);
+
+    final errors = <String>[];
+    var fileIndex = 0;
     for (final media in results) {
       if (!mounted) break;
+      final tempId = 'up_${DateTime.now().millisecondsSinceEpoch}_${fileIndex++}';
+      setState(() {
+        _messages.add(_buildTempFileMessage(tempId, media.file, mimeType: media.mimeType));
+        _uploadProgresses[tempId] = 0.0;
+        _uploadTempFiles[tempId] = media.file;
+      });
       try {
         final fileSize = await media.file.length();
         if (fileSize > 1024 * 1024 * 1024) {
-          _showSnackBar(AppLocalizations.of(context).fileTooLarge);
+          errors.add(l.fileTooLarge);
+          _removeUploadTemp(tempId);
           continue;
         }
         final useChunked =
             media.mimeType.startsWith('video/') && fileSize > 5 * 1024 * 1024;
         final api = widget.api;
+        void report(double p) => _reportUploadProgress(tempId, p);
+
         final uploadResult = useChunked
-            ? await api.uploadFileChunked(media.file, onProgress: (p) {})
-            : await api.uploadFile(media.file);
+            ? await api.uploadFileChunked(media.file, onProgress: report)
+            : await api.uploadFile(media.file, onProgress: report);
         if (uploadResult != null) {
-          api.sendFile(
+          if (mounted) setState(() => _uploadProgresses[tempId] = 1.0);
+          // Even if unmounted, still send the file message (background upload).
+          final sent = await api.sendFile(
             widget.chatId,
             uploadResult['fileId']!,
             mimeType: uploadResult['mimeType'],
+            tempId: tempId,
           );
+          if (!sent) {
+            errors.add(l.uploadFailed);
+            _removeUploadTemp(tempId);
+          }
+          _scheduleUploadResolve(tempId);
+        } else {
+          errors.add(l.uploadFailed);
+          _removeUploadTemp(tempId);
         }
       } catch (e) {
         if (e is FileTooLargeException) {
-          _showSnackBar(AppLocalizations.of(context).fileTooLarge);
+          errors.add(l.fileTooLarge);
         } else {
-          _showSnackBar(AppLocalizations.of(context).uploadFailed);
+          errors.add(l.uploadFailed);
         }
+        _removeUploadTemp(tempId);
+      }
+    }
+    if (mounted) {
+      setState(() => _isUploading = false);
+      if (errors.isNotEmpty) {
+        _showSnackBar(errors.first);
       }
     }
   }
@@ -1486,8 +1676,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _pendingFile = null;
       _pendingFileName = null;
       _pendingFileMimeType = null;
-      _uploadProgress = 0.0;
-      _uploadStatus = '';
     });
   }
 
@@ -1516,10 +1704,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (widget.api.onReconnected == _handleReconnected) {
       widget.api.onReconnected = null;
     }
-    for (final player in _audioPlayers.values) {
-      player.dispose();
+    for (final entry in _audioPlayers.entries) {
+      entry.value.dispose();
     }
     _audioPlayers.clear();
+    _activeAudioPosSub?.cancel();
+    _activeAudioStateSub?.cancel();
+    _activeAudioDurationSub?.cancel();
+    for (final t in _resolveTimers.values) {
+      t.cancel();
+    }
+    _resolveTimers.clear();
     super.dispose();
   }
 
@@ -1529,7 +1724,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(88),
+        preferredSize: Size.fromHeight(_activeAudioId != null ? 150 : 88),
         child: Stack(
           children: [
             Positioned.fill(
@@ -1593,8 +1788,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               children: [
                                 CircleAvatar(
                                   radius: 16,
-                                  backgroundColor: colorFromId(widget.chatId),
-                                  child: Text(widget.chatName[0].toUpperCase()),
+                                  backgroundColor: widget.chatType == 'saved'
+                                      ? Theme.of(context).colorScheme.primary
+                                      : colorFromId(widget.chatId),
+                                  child: widget.chatType == 'saved'
+                                      ? Icon(Icons.bookmark,
+                                          size: 18,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onPrimary)
+                                      : Text(
+                                          widget.chatName[0].toUpperCase()),
                                 ),
                                 CircleAvatar(
                                   radius: 16,
@@ -1697,6 +1901,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   ),
                 ],
               ),
+              if (_activeAudioId != null)
+                _buildMiniAudioPlayer(context),
             ],
           ),
         ),
@@ -1761,16 +1967,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                           : child;
                                       if (msg.isDeleted ||
                                           msg.text == '[deleted]') {
-                                        return KeyedSubtree(
-                                          key: ValueKey(msg.id),
-                                          child: messageWidget,
+                                        return RepaintBoundary(
+                                          key: ValueKey('repaint_${msg.id}'),
+                                          child: KeyedSubtree(
+                                            key: ValueKey(msg.id),
+                                            child: messageWidget,
+                                          ),
                                         );
                                       }
-                                      return KeyedSubtree(
-                                        key: ValueKey('swipe_${msg.id}'),
-                                        child: _buildSwipeableMessage(
-                                          msg,
-                                          messageWidget,
+                                      return RepaintBoundary(
+                                        key: ValueKey('repaint_${msg.id}'),
+                                        child: KeyedSubtree(
+                                          key: ValueKey('swipe_${msg.id}'),
+                                          child: _buildSwipeableMessage(
+                                            msg,
+                                            messageWidget,
+                                          ),
                                         ),
                                       );
                                     },
@@ -1879,175 +2091,138 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   _buildEmojiModeToggle(),
                 Padding(
                   padding: EdgeInsets.fromLTRB(12, _showEmojiPanel ? 0 : 4, 12, 12),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(32),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                        BoxShadow(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.primary.withValues(alpha: 0.06),
-                          blurRadius: 16,
-                          spreadRadius: -4,
-                        ),
-                      ],
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_showEmojiPanel)
-                          _buildEmojiPanel(),
-                        SafeArea(
-                          top: false,
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              IconButton(
-                                onPressed: () => setState(() => _showEmojiPanel = !_showEmojiPanel),
-                                icon: const Icon(Icons.emoji_emotions_outlined),
-                              ),
-                          Expanded(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxHeight: 120),
-                              child: TextField(
-                                controller: _messageController,
-                                maxLines: null,
-                                minLines: 1,
-                                textCapitalization:
-                                    TextCapitalization.sentences,
-                                inputFormatters: [
-                                  LengthLimitingTextInputFormatter(
-                                    _maxMessageLength,
-                                  ),
-                                ],
-                                decoration: InputDecoration(
-                                  hintText: _isEditing
-                                      ? AppLocalizations.of(
-                                          context,
-                                        ).editMessageHint
-                                      : AppLocalizations.of(
-                                          context,
-                                        ).typeMessage,
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 10,
-                                  ),
-                                  isDense: true,
-                                ),
-                                textInputAction: TextInputAction.newline,
-                                onChanged: (value) {
-                                  setState(() {});
-                                  _draftDebounce?.cancel();
-                                  _draftDebounce = Timer(
-                                    const Duration(milliseconds: 300),
-                                    _saveDraft,
-                                  );
-                                },
-                              ),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).cardColor,
+                          borderRadius: BorderRadius.circular(32),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.12),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          if (_isRecording)
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
+                            BoxShadow(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.06),
+                              blurRadius: 16,
+                              spreadRadius: -4,
+                            ),
+                          ],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_showEmojiPanel)
+                              _buildEmojiPanel(),
+                            SafeArea(
+                              top: false,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  IconButton(
+                                    onPressed: () => setState(() => _showEmojiPanel = !_showEmojiPanel),
+                                    icon: const Icon(Icons.emoji_emotions_outlined),
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: _shouldCancelRecording ? Colors.grey : Colors.red,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        _shouldCancelRecording ? Icons.close : Icons.mic,
-                                        color: Colors.white,
-                                        size: 16,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        _shouldCancelRecording
-                                            ? 'Cancel'
-                                            : _getRecordingDuration(),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (!_shouldCancelRecording) ...[
-                                  const SizedBox(width: 8),
-                                  IconButton.filled(
-                                    onPressed: _stopRecording,
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: Colors.red,
-                                    ),
-                                    icon: const Icon(Icons.stop),
-                                  ),
-                                ],
-                              ],
-                            )
-                          else
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  onPressed: _isUploading
-                                      ? null
-                                      : _showAttachmentOptions,
-                                  icon: _isUploading
-                                      ? const SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
+                                  Expanded(
+                                    child: _isRecording
+                                        ? Center(child: _buildRecordingPanel())
+                                        : ConstrainedBox(
+                                            constraints: const BoxConstraints(
+                                              maxHeight: 120,
+                                            ),
+                                            child: TextField(
+                                              controller: _messageController,
+                                              maxLines: null,
+                                              minLines: 1,
+                                              textCapitalization:
+                                                  TextCapitalization.sentences,
+                                              inputFormatters: [
+                                                LengthLimitingTextInputFormatter(
+                                                  _maxMessageLength,
+                                                ),
+                                              ],
+                                              decoration: InputDecoration(
+                                                hintText: _isEditing
+                                                    ? AppLocalizations.of(
+                                                        context,
+                                                      ).editMessageHint
+                                                    : AppLocalizations.of(
+                                                        context,
+                                                      ).typeMessage,
+                                                border: InputBorder.none,
+                                                enabledBorder: InputBorder.none,
+                                                focusedBorder: InputBorder.none,
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 10,
+                                                    ),
+                                                isDense: true,
+                                              ),
+                                              textInputAction:
+                                                  TextInputAction.newline,
+                                              onChanged: (value) {
+                                                setState(() {});
+                                                _draftDebounce?.cancel();
+                                                _draftDebounce = Timer(
+                                                  const Duration(
+                                                    milliseconds: 300,
+                                                  ),
+                                                  _saveDraft,
+                                                );
+                                              },
+                                            ),
                                           ),
-                                        )
-                                      : const Icon(Icons.attach_file),
-                                ),
-                                const SizedBox(width: 4),
-                                _messageController.text.trim().isNotEmpty || _pendingFile != null
-                                  ? IconButton.filled(
-                                      onPressed: _isUploading ? null : _sendMessage,
-                                      icon: Icon(
-                                        _isEditing ? Icons.check : Icons.send,
-                                      ),
-                                    )
-                                  : Listener(
-                                      onPointerDown: (_) => _handleMicDown(),
-                                      onPointerMove: (details) {
-                                        if (details.localPosition.dx > 120) {
-                                          _shouldCancelRecording = true;
-                                        }
-                                      },
-                                      onPointerUp: (_) => _handleMicUp(),
-                                      child: IconButton.filled(
-                                        onPressed: () {},
-                                        icon: const Icon(Icons.mic),
-                                      ),
-                                    ),
-                              ],
+                                  ),
+                                  const SizedBox(width: 100),
+                                ],
+                              ),
                             ),
                           ],
                         ),
                       ),
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            IconButton(
+                              onPressed: _isUploading || _isRecording
+                                  ? null
+                                  : _showAttachmentOptions,
+                              icon: _isUploading
+                                  ? const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.attach_file),
+                            ),
+                            const SizedBox(width: 4),
+                            if (_isRecording ||
+                                (_messageController.text.trim().isEmpty &&
+                                    _pendingFile == null))
+                              _buildMicButton()
+                            else
+                              IconButton.filled(
+                                onPressed: _isUploading ? null : _sendMessage,
+                                icon: Icon(
+                                  _isEditing ? Icons.check : Icons.send,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ],
-                  ),
                   ),
                 ),
               ],
@@ -2134,6 +2309,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
 
     final isMe = msg.userId == _currentUserId;
+
+    final double? uploadProgress = _uploadProgresses[msg.id];
+    if (uploadProgress != null) {
+      return _buildUploadBubble(
+        msg,
+        uploadProgress,
+        isMe,
+        myBubbleColor,
+        myTextColor,
+        mySecTextColor,
+      );
+    }
 
     if (msg.stickerId != null) {
       final imageUrl = msg.stickerImageUrl != null
@@ -2450,6 +2637,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       fileName: fileName,
                       isMe: isMe,
                       showFileName: ext != 'm4a',
+                      onPlayStart: () => _startAudio(msg.id),
                       onComplete: () => _onAudioComplete(msg.id),
                     ),
                     const SizedBox(height: 4),
@@ -2730,8 +2918,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final screenSize = MediaQuery.of(context).size;
     const double popupWidth = 220;
     const double itemHeight = 44;
-    const double items = 3;
-    const double popupHeight = itemHeight * items + 8;
+    final int menuItems = widget.chatType == 'saved' ? 2 : 3;
+    final double popupHeight = itemHeight * menuItems + 8;
 
     double left = position.dx - popupWidth + renderBox.size.width;
     double top = position.dy + renderBox.size.height + 4;
@@ -2770,11 +2958,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _threeDotAction(
-                          icon: Icons.info_outline,
-                          label: l10n.information,
-                          onTap: () { entry.remove(); _navigateToProfileOrGroup(); },
-                        ),
+                        if (widget.chatType != 'saved')
+                          _threeDotAction(
+                            icon: Icons.info_outline,
+                            label: l10n.information,
+                            onTap: () { entry.remove(); _navigateToProfileOrGroup(); },
+                          ),
                         _threeDotAction(
                           icon: _isMuted ? Icons.notifications : Icons.notifications_off,
                           label: _isMuted ? l10n.unmute : l10n.mute,
@@ -3016,10 +3205,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         '🛒', '🔧', '🔨', '🎁', '🎈', '🎉', '🎊', '🏆', '🥇', '🥈', '🥉', '🏅',
         '🎯', '🎮', '🎲', '🎭', '🎨',
       ]),
+      ('🥖', 'Kolobki', []),
     ];
 
     final theme = Theme.of(context);
     final currentCat = categories[_emojiTabIndex];
+    final isKolobok = _emojiTabIndex == categories.length - 1;
 
     return Container(
       height: 290,
@@ -3142,8 +3333,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(18),
                         ),
-                        child: Text(categories[i].$1,
-                          style: const TextStyle(fontSize: 18)),
+                        child: i == categories.length - 1
+                          ? Image.asset(
+                              'assets/mini/${_kolobokGifs.first}.gif',
+                              width: 24,
+                              height: 24,
+                              fit: BoxFit.contain,
+                              filterQuality: FilterQuality.low,
+                              cacheWidth: 48,
+                              gaplessPlayback: true,
+                            )
+                          : Text(
+                              categories[i].$1,
+                              style: const TextStyle(fontSize: 18),
+                            ),
                       ),
                     ),
                   );
@@ -3156,13 +3359,37 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 child: GridView.builder(
                   key: ValueKey(_emojiTabIndex),
                   padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 8,
-                    mainAxisSpacing: 1,
-                    crossAxisSpacing: 1,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: isKolobok ? 4 : 8,
+                    mainAxisSpacing: isKolobok ? 4 : 1,
+                    crossAxisSpacing: isKolobok ? 4 : 1,
                   ),
-                  itemCount: currentCat.$3.length,
+                  itemCount: isKolobok ? _kolobokGifs.length : currentCat.$3.length,
                   itemBuilder: (_, i) {
+                    if (isKolobok) {
+                      final gif = _kolobokGifs[i];
+                      return RepaintBoundary(
+                        child: GestureDetector(
+                          onTap: () => _insertKolobok(gif),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Image.asset(
+                                'assets/mini/$gif.gif',
+                                fit: BoxFit.contain,
+                                filterQuality: FilterQuality.low,
+                                cacheWidth: 128,
+                                gaplessPlayback: true,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
                     final emoji = currentCat.$3[i];
                     return GestureDetector(
                       onTap: () {
@@ -3302,12 +3529,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 ),
               ),
               if (_isUploading)
-                Text(
-                  _uploadStatus,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 )
               else
                 IconButton(
@@ -3318,12 +3543,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 ),
             ],
           ),
-          if (_isUploading) ...[
-            const SizedBox(height: 6),
-            LinearProgressIndicator(
-              value: _uploadProgress > 0 ? _uploadProgress : null,
-            ),
-          ],
           const SizedBox(height: 4),
         ],
       ),
@@ -3335,6 +3554,256 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return Container(
       color: Theme.of(context).colorScheme.surfaceContainerHigh,
       child: Icon(isVideo ? Icons.videocam : Icons.insert_drive_file, size: 28),
+    );
+  }
+
+  Message _buildTempFileMessage(String id, File file, {String? mimeType}) {
+    final name = file.path.split(RegExp(r'[\\/]')).last;
+    return Message(
+      id: id,
+      chatId: widget.chatId,
+      userId: _currentUserId,
+      text: '[File] $name',
+      fileMimeType: mimeType ?? _guessMimeType(name),
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+      status: MessageStatus.sending,
+    );
+  }
+
+  String? _guessMimeType(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+    const images = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'};
+    const videos = {'mp4', 'webm', 'mov', 'avi', 'mkv'};
+    const audios = {'mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'};
+    if (images.contains(ext)) return 'image/$ext';
+    if (videos.contains(ext)) return 'video/$ext';
+    if (audios.contains(ext)) return 'audio/$ext';
+    return null;
+  }
+
+  void _removeUploadTemp(String tempId) {
+    _resolveTimers.remove(tempId)?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _messages.removeWhere((m) => m.id == tempId);
+      _uploadProgresses.remove(tempId);
+      _uploadTempFiles.remove(tempId);
+    });
+  }
+
+  void _reportUploadProgress(String tempId, double p) {
+    if (!mounted) return;
+    final last = _lastReportedProgress[tempId];
+    if (last != null && (p - last).abs() < 0.02 && p < 1.0) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final lastT = _lastReportTimeMs[tempId] ?? 0;
+    if (now - lastT < 120 && p < 1.0) return;
+    _lastReportedProgress[tempId] = p;
+    _lastReportTimeMs[tempId] = now;
+    setState(() => _uploadProgresses[tempId] = p);
+  }
+
+  // Resolve the temp upload bubble as soon as the file message is sent.
+  // The normal path is the server WS broadcast arriving via _handleNewMessage
+  // (removes the temp instantly). This is only a safety net for when the
+  // broadcast is delayed or lost: wait a bit for it, and reload the server
+  // list only if the temp is still pending.
+  void _scheduleUploadResolve(String tempId) {
+    _resolveTimers.remove(tempId)?.cancel();
+    _resolveTimers[tempId] = Timer(const Duration(milliseconds: 2500), () {
+      _resolveTimers.remove(tempId);
+      if (!mounted) return;
+      if (!_uploadProgresses.containsKey(tempId)) return; // broadcast already resolved it
+      setState(() {
+        _messages.removeWhere((m) => m.id == tempId);
+        _uploadProgresses.remove(tempId);
+        _uploadTempFiles.remove(tempId);
+      });
+      _reloadMessagesAfterUpload();
+    });
+  }
+
+  Future<void> _reloadMessagesAfterUpload() async {
+    try {
+      final messages = await widget.api.getMessages(
+        widget.chatId,
+        after: _messages.isNotEmpty ? _messages.last.createdAt : null,
+        limit: 100,
+      );
+      if (!mounted) return;
+      setState(() {
+        for (final m in messages) {
+          if (!_messages.any((existing) => existing.id == m.id)) {
+            _messages.add(m);
+          }
+        }
+        _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        for (final m in messages) {
+          if (m.userId != _currentUserId) {
+            _pendingReadIds.add(m.id);
+          }
+        }
+      });
+      for (final m in messages) {
+        _decryptMessage(m);
+      }
+      if (_pendingReadIds.isNotEmpty) {
+        _scheduleReadReceipts();
+        widget.onMessagesRead?.call();
+      }
+    } catch (_) {}
+  }
+
+  Widget _buildUploadBubble(
+    Message msg,
+    double progress,
+    bool isMe,
+    Color bubbleColor,
+    Color textColor,
+    Color secTextColor,
+  ) {
+    final file = _uploadTempFiles[msg.id];
+    final fileName = msg.text.replaceFirst('[File] ', '');
+    final ext = fileName.split('.').last.toLowerCase();
+    final isImage = msg.fileMimeType?.startsWith('image/') ??
+        ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(ext);
+    final isVideo = msg.fileMimeType?.startsWith('video/') ??
+        ['mp4', 'webm', 'mov', 'avi', 'mkv'].contains(ext);
+    final isAudio = msg.fileMimeType?.startsWith('audio/') ??
+        ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].contains(ext);
+    final percent = (progress * 100).clamp(0, 100).toStringAsFixed(0);
+
+    final Widget content;
+    if (isImage && file != null) {
+      content = ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 220,
+          height: 200,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.file(
+                file,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: secTextColor.withValues(alpha: 0.2),
+                  child: Icon(Icons.broken_image, color: textColor),
+                ),
+              ),
+              Container(color: Colors.black45),
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 3,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '$percent%',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else if (isAudio) {
+      content = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.mic, size: 24, color: textColor),
+          const SizedBox(width: 10),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              fileName,
+              style: TextStyle(color: textColor, fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      );
+    } else {
+      content = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isVideo ? Icons.videocam : Icons.insert_drive_file,
+            size: 24,
+            color: textColor,
+          ),
+          const SizedBox(width: 10),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              fileName,
+              style: TextStyle(color: textColor, fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      );
+    }
+
+    final showPercentFooter = !(isImage && file != null);
+    final footerChildren = showPercentFooter
+        ? [
+            Text(
+              '$percent%',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: secTextColor,
+              ),
+            ),
+            const SizedBox(width: 4),
+            _buildStatusIcon(MessageStatus.sending),
+          ]
+        : [
+            _buildStatusIcon(MessageStatus.sending),
+          ];
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+        decoration: BoxDecoration(
+          color: bubbleColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            content,
+            if (showPercentFooter) ...[
+              const SizedBox(height: 6),
+              SizedBox(
+                width: 160,
+                child: LinearProgressIndicator(
+                  value: progress > 0 ? progress : null,
+                ),
+              ),
+            ],
+            const SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: footerChildren,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -3394,39 +3863,82 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Widget _buildMessageText(String text, Color textColor) {
     final urlRegExp = RegExp(r'https?://[^\s]+');
-    final matches = urlRegExp.allMatches(text).toList();
-
-    if (matches.isEmpty) {
-      return Text(text, style: TextStyle(color: textColor));
-    }
+    final kolobokRegExp = RegExp(r'::kolobok:([A-Za-z0-9_\-]+)::|:k(\d+):');
 
     String stripTrailingPunctuation(String url) {
       return url.replaceAll(RegExp(r'[.,!?;:)]+$'), '');
     }
 
     final spans = <InlineSpan>[];
-    int lastEnd = 0;
 
-    for (final m in matches) {
-      if (m.start > lastEnd) {
-        spans.add(TextSpan(text: text.substring(lastEnd, m.start)));
+    void addTextWithLinks(String segment) {
+      final matches = urlRegExp.allMatches(segment).toList();
+      if (matches.isEmpty) {
+        spans.add(TextSpan(text: segment));
+        return;
       }
-      final rawUrl = text.substring(m.start, m.end);
-      final cleanUrl = stripTrailingPunctuation(rawUrl);
-      spans.add(
-        TextSpan(
-          text: rawUrl,
-          style: const TextStyle(
-            color: Colors.blue,
-            decoration: TextDecoration.underline,
+      int lastEnd = 0;
+      for (final m in matches) {
+        if (m.start > lastEnd) {
+          spans.add(TextSpan(text: segment.substring(lastEnd, m.start)));
+        }
+        final rawUrl = segment.substring(m.start, m.end);
+        final cleanUrl = stripTrailingPunctuation(rawUrl);
+        spans.add(
+          TextSpan(
+            text: rawUrl,
+            style: const TextStyle(
+              color: Colors.blue,
+              decoration: TextDecoration.underline,
+            ),
+            recognizer: TapGestureRecognizer()..onTap = () => _openUrl(cleanUrl),
           ),
-          recognizer: TapGestureRecognizer()..onTap = () => _openUrl(cleanUrl),
-        ),
-      );
-      lastEnd = m.end;
+        );
+        lastEnd = m.end;
+      }
+      if (lastEnd < segment.length) {
+        spans.add(TextSpan(text: segment.substring(lastEnd)));
+      }
     }
-    if (lastEnd < text.length) {
-      spans.add(TextSpan(text: text.substring(lastEnd)));
+
+    final kolobokMatches = kolobokRegExp.allMatches(text).toList();
+    if (kolobokMatches.isEmpty) {
+      addTextWithLinks(text);
+    } else {
+      int lastEnd = 0;
+      for (final m in kolobokMatches) {
+        if (m.start > lastEnd) {
+          final prefix = text.substring(lastEnd, m.start);
+          if (prefix.isNotEmpty) addTextWithLinks(prefix);
+        }
+        final asset = _kolobokAssetFromMarker(m.group(0)!);
+        if (asset != null) {
+          spans.add(
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Image.asset(
+                  'assets/mini/$asset.gif',
+                  width: 26,
+                  height: 26,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.low,
+                  cacheWidth: 52,
+                  gaplessPlayback: true,
+                ),
+              ),
+            ),
+          );
+        } else {
+          spans.add(TextSpan(text: m.group(0)));
+        }
+        lastEnd = m.end;
+      }
+      if (lastEnd < text.length) {
+        final suffix = text.substring(lastEnd);
+        if (suffix.isNotEmpty) addTextWithLinks(suffix);
+      }
     }
 
     return RichText(
@@ -3462,7 +3974,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     const double popupWidth = 220;
     const double emojiRowHeight = 52;
     const double actionItemHeight = 44;
-    int actionCount = 2;
+    int actionCount = 3;
+    if (msg.fileId != null) actionCount += 1;
+    if (msg.stickerId != null) actionCount += 2;
     if (msg.userId == _currentUserId) actionCount += 2;
     final double popupHeight = emojiRowHeight + 1 + actionCount * actionItemHeight + 12;
 
@@ -3582,6 +4096,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             _startReply(msg);
                           },
                         ),
+                        _menuAction(
+                          icon: Icons.forward,
+                          label: l10n.forward,
+                          onTap: () {
+                            entry.remove();
+                            _forwardMessage(msg);
+                          },
+                        ),
+                        if (msg.fileId != null)
+                          _menuAction(
+                            icon: Icons.download,
+                            label: l10n.save,
+                            onTap: () {
+                              entry.remove();
+                              _saveFile(msg, silent: false);
+                            },
+                          ),
                         if (msg.stickerId != null) ...[
                           _menuAction(
                             icon: Icons.collections,
@@ -3675,7 +4206,151 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _saveFile(Message msg, {bool silent = false}) async {
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
+
+    if (!silent) {
+      final snackBar = SnackBar(
+        content: Text(l10n.saving),
+        duration: const Duration(seconds: 30),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+    }
+
+    try {
+      final fileName = msg.text.replaceFirst('[File] ', '');
+      var token = widget.api.token;
+      // Refresh the token so an expired/cleared token doesn't 401 the download.
+      if (token == null) {
+        token = await widget.api.refreshToken();
+      }
+      if (token == null) throw Exception('auth_required');
+      final downloadUrl = SaveFileUtils.getDownloadUrl(msg.fileId!, token);
+
+      await SaveFileUtils.saveFile(
+        downloadUrl: downloadUrl,
+        fileName: fileName,
+        mimeType: msg.fileMimeType ?? 'application/octet-stream',
+      );
+
+      if (!mounted) return;
+      if (!silent) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.fileSaved),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      if (!silent) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.fileSaveError),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  bool _isMediaMessage(Message msg) {
+    if (msg.fileId == null) return false;
+    final fileName = msg.text.replaceFirst('[File] ', '');
+    return SaveFileUtils.isMediaFile(SaveFileUtils.getFileExtension(fileName));
+  }
+
+  void _startAudio(String activeId) {
+    for (final entry in _audioPlayers.entries) {
+      if (entry.key != activeId) entry.value.pause();
+    }
+    _attachActiveAudio(activeId);
+  }
+
+  void _attachActiveAudio(String id) {
+    final player = _audioPlayers[id];
+    if (player == null) return;
+    _activeAudioPosSub?.cancel();
+    _activeAudioStateSub?.cancel();
+    _activeAudioDurationSub?.cancel();
+    _activeAudioId = id;
+    _activeAudioPosition = player.position;
+    _activeAudioDuration = player.duration ?? Duration.zero;
+    _activeAudioPlaying = player.playing;
+    final msg = _messages.where((m) => m.id == id).firstOrNull;
+    _activeAudioLabel = msg == null ? '' : _audioLabelFor(msg);
+    _activeAudioPosSub = player.positionStream.listen((pos) {
+      if (mounted && _activeAudioId == id) {
+        setState(() => _activeAudioPosition = pos);
+      }
+    });
+    _activeAudioDurationSub = player.durationStream.listen((d) {
+      if (mounted && _activeAudioId == id && d != null) {
+        setState(() => _activeAudioDuration = d);
+      }
+    });
+    _activeAudioStateSub = player.playerStateStream.listen((state) {
+      if (mounted && _activeAudioId == id) {
+        setState(() {
+          _activeAudioPlaying = state.playing;
+          if (state.processingState == ProcessingState.completed) {
+            _activeAudioPosition = Duration.zero;
+          }
+        });
+      }
+    });
+    if (mounted) setState(() {});
+  }
+
+  void _clearActiveAudio() {
+    _activeAudioPosSub?.cancel();
+    _activeAudioStateSub?.cancel();
+    _activeAudioDurationSub?.cancel();
+    _activeAudioPosSub = null;
+    _activeAudioStateSub = null;
+    _activeAudioDurationSub = null;
+    _activeAudioId = null;
+    _activeAudioPosition = Duration.zero;
+    _activeAudioDuration = Duration.zero;
+    _activeAudioPlaying = false;
+    _activeAudioLabel = '';
+    if (mounted) setState(() {});
+  }
+
+  String _audioLabelFor(Message msg) {
+    if (msg.userId == _currentUserId) {
+      return AppLocalizations.of(context).youLabel;
+    }
+    if (widget.chatType == 'group') {
+      return _participantNames[msg.userId] ?? widget.chatName;
+    }
+    return widget.chatName;
+  }
+
+  Future<void> _toggleActiveAudio() async {
+    final id = _activeAudioId;
+    if (id == null) return;
+    final player = _audioPlayers[id];
+    if (player == null) return;
+    if (player.playing) {
+      await player.pause();
+    } else {
+      await player.play();
+    }
+  }
+
+  void _seekActiveAudio(Duration position) {
+    final id = _activeAudioId;
+    if (id == null) return;
+    _audioPlayers[id]?.seek(position);
+  }
+
   void _onAudioComplete(String completedId) {
+    if (completedId != _activeAudioId) return;
     final completed = _messages.where((m) => m.id == completedId).firstOrNull;
     if (completed == null) return;
     const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'];
@@ -3692,11 +4367,168 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           null,
           (min, m) => min == null || m.createdAt < min.createdAt ? m : min,
         );
-    if (next == null) return;
+    if (next == null) {
+      _clearActiveAudio();
+      return;
+    }
     for (final entry in _audioPlayers.entries) {
       if (entry.key != next.id) entry.value.pause();
     }
+    _attachActiveAudio(next.id);
     _audioPlayers[next.id]?.play();
+  }
+
+  String _fmtAudioDuration(Duration d) {
+    final min = d.inMinutes.remainder(60);
+    final sec = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$min:$sec';
+  }
+
+  Widget _buildMiniAudioPlayer(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final duration = _activeAudioDuration;
+    final position = _activeAudioPosition;
+    final totalMs = duration.inMilliseconds;
+    final ratio = totalMs > 0
+        ? (position.inMilliseconds / totalMs).clamp(0.0, 1.0).toDouble()
+        : 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              scheme.surface.withValues(alpha: 0.7),
+              scheme.surface.withValues(alpha: 0.0),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: _toggleActiveAudio,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      scheme.primary,
+                      scheme.primary.withValues(alpha: 0.75),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: scheme.onPrimary.withValues(alpha: 0.3),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: scheme.primary.withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  _activeAudioPlaying ? Icons.pause : Icons.play_arrow,
+                  color: scheme.onPrimary,
+                  size: 22,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _activeAudioLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${_fmtAudioDuration(position)} / ${_fmtAudioDuration(duration)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: scheme.onSurface.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      void seek(double dx) {
+                        if (totalMs <= 0) return;
+                        final r = (dx / constraints.maxWidth).clamp(0.0, 1.0);
+                        _seekActiveAudio(
+                          Duration(milliseconds: (totalMs * r).round()),
+                        );
+                      }
+
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapDown: (d) => seek(d.localPosition.dx),
+                        onHorizontalDragUpdate: (d) =>
+                            seek(d.localPosition.dx),
+                        child: SizedBox(
+                          height: 18,
+                          child: Center(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: Stack(
+                                children: [
+                                  Container(
+                                    width: constraints.maxWidth,
+                                    height: 3,
+                                    color: scheme.onSurface.withValues(
+                                      alpha: 0.15,
+                                    ),
+                                  ),
+                                  Container(
+                                    width: constraints.maxWidth * ratio,
+                                    height: 3,
+                                    color: scheme.primary,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _formatTime(int timestamp) {
@@ -3708,6 +4540,148 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final min = (_recordingSeconds ~/ 60).toString().padLeft(2, '0');
     final sec = (_recordingSeconds % 60).toString().padLeft(2, '0');
     return '$min:$sec';
+  }
+
+  Widget _buildMicButton() {
+    final bool showStop = _isRecording && _recordingLocked;
+    final bool canDrift = _micTouching && _isRecording && !_recordingLocked;
+    final Offset drift = canDrift
+        ? Offset(
+            _micDrag.dx.clamp(-18.0, 18.0),
+            _micDrag.dy.clamp(-14.0, 14.0),
+          )
+        : Offset.zero;
+    return Transform.translate(
+      offset: drift,
+      child: Listener(
+        onPointerDown: (_) {
+          _micTouching = true;
+          _handleMicDown();
+        },
+        onPointerMove: (details) {
+          _micDrag += details.delta;
+          if (!_isRecording) return;
+          if (!_recordingLocked && _micDrag.dx < -60) {
+            _shouldCancelRecording = true;
+          } else if (!_recordingLocked && _micDrag.dy < -60) {
+            _recordingLocked = true;
+            _lockFromThisGesture = true;
+            _shouldCancelRecording = false;
+          } else if (_recordingLocked && _micDrag.dx < -60) {
+            _shouldCancelRecording = true;
+          }
+          setState(() {});
+        },
+        onPointerUp: (_) {
+          _micTouching = false;
+          _handleMicUp();
+        },
+        onPointerCancel: (_) {
+          _micTouching = false;
+          _handleMicUp();
+        },
+        child: IconButton.filled(
+          onPressed: () {},
+          style: IconButton.styleFrom(
+            backgroundColor: showStop
+                ? Colors.green
+                : _isRecording
+                    ? Colors.red
+                    : null,
+          ),
+          icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecordingPanel() {
+    final theme = Theme.of(context);
+    final Color accent = _shouldCancelRecording
+        ? theme.colorScheme.error
+        : _recordingLocked
+            ? theme.colorScheme.primary
+            : Colors.red;
+    final double cancelProg = (-_micDrag.dx / 60).clamp(0.0, 1.0);
+    final double lockProg = (-_micDrag.dy / 60).clamp(0.0, 1.0);
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _shouldCancelRecording
+                ? Icons.close
+                : _recordingLocked
+                    ? Icons.lock
+                    : Icons.mic,
+            size: 18,
+            color: accent,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            _shouldCancelRecording
+                ? AppLocalizations.of(context).cancel
+                : _getRecordingDuration(),
+            style: TextStyle(
+              color: accent,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (_recordingLocked)
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: InkWell(
+                onTap: _cancelLockedRecording,
+                borderRadius: BorderRadius.circular(16),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    Icons.delete_outline,
+                    size: 20,
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ),
+            )
+          else ...[
+            const SizedBox(width: 10),
+            _buildDragGuideIcon(
+              icon: Icons.arrow_back,
+              progress: cancelProg,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(width: 4),
+            _buildDragGuideIcon(
+              icon: Icons.arrow_upward,
+              progress: lockProg,
+              color: theme.colorScheme.primary,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDragGuideIcon({
+    required IconData icon,
+    required double progress,
+    required Color color,
+  }) {
+    return Opacity(
+      opacity: (0.35 + progress * 0.65).clamp(0.0, 1.0),
+      child: Icon(
+        icon,
+        size: 16,
+        color: Color.lerp(color.withValues(alpha: 0.4), color, progress),
+      ),
+    );
   }
 
   List<Object> get _displayItems {
@@ -3776,6 +4750,7 @@ class _AudioPlayerWidget extends StatefulWidget {
   final String fileName;
   final bool isMe;
   final bool showFileName;
+  final VoidCallback? onPlayStart;
   final VoidCallback? onComplete;
 
   const _AudioPlayerWidget({
@@ -3785,6 +4760,7 @@ class _AudioPlayerWidget extends StatefulWidget {
     required this.fileName,
     required this.isMe,
     this.showFileName = true,
+    this.onPlayStart,
     this.onComplete,
   });
 
@@ -3835,18 +4811,18 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
             '[_AudioWidget#${_instanceId}.playerStateStream] PLAYING→STOPPED processingState=${state.processingState}',
           );
         }
-        setState(() {
-          _isPlaying = state.playing;
+          setState(() {
+            _isPlaying = state.playing;
+            if (state.processingState == ProcessingState.completed) {
+              _audioPlayer.seek(Duration.zero);
+              _audioPlayer.pause();
+            }
+          });
           if (state.processingState == ProcessingState.completed) {
-            _audioPlayer.seek(Duration.zero);
-            _audioPlayer.pause();
+            widget.onComplete?.call();
           }
-        });
-        if (state.processingState == ProcessingState.completed) {
-          widget.onComplete?.call();
         }
-      }
-    });
+      });
   }
 
   @override
@@ -3899,9 +4875,10 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
   }
 
   Future<void> _togglePlayPause() async {
-    if (_isPlaying) {
+    if (_audioPlayer.playing) {
       await _audioPlayer.pause();
     } else {
+      widget.onPlayStart?.call();
       await _audioPlayer.play();
     }
   }
@@ -4470,5 +5447,75 @@ class _VideoFullscreenPlayerState extends State<_VideoFullscreenPlayer> {
         ),
       ),
     );
+  }
+}
+
+String? _kolobokAssetForMarker(String marker, List<String> gifs) {
+  final name = RegExp(r'^::kolobok:([A-Za-z0-9_\-]+)::$')
+      .firstMatch(marker)
+      ?.group(1);
+  if (name != null && gifs.contains(name)) return name;
+  final index = RegExp(r'^:k(\d+):$').firstMatch(marker)?.group(1);
+  if (index != null) {
+    final i = int.tryParse(index);
+    if (i != null && i >= 0 && i < gifs.length) return gifs[i];
+  }
+  return null;
+}
+
+class _KolobokTextEditingController extends TextEditingController {
+  static final RegExp _regex = RegExp(
+    r'::kolobok:([A-Za-z0-9_\-]+)::|:k(\d+):',
+  );
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final text = value.text;
+    if ((withComposing && value.isComposingRangeValid) ||
+        !_regex.hasMatch(text)) {
+      return super.buildTextSpan(
+        context: context,
+        style: style,
+        withComposing: withComposing,
+      );
+    }
+    final gifs = _ChatScreenState._kolobokGifs;
+    final children = <InlineSpan>[];
+    int lastEnd = 0;
+    for (final m in _regex.allMatches(text)) {
+      if (m.start > lastEnd) {
+        children.add(TextSpan(text: text.substring(lastEnd, m.start)));
+      }
+      final asset = _kolobokAssetForMarker(m.group(0)!, gifs);
+      if (asset != null) {
+        children.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: ExcludeSemantics(
+              child: Image.asset(
+                'assets/mini/$asset.gif',
+                width: 24,
+                height: 24,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.low,
+                cacheWidth: 48,
+                gaplessPlayback: true,
+              ),
+            ),
+          ),
+        );
+      } else {
+        children.add(TextSpan(text: m.group(0)));
+      }
+      lastEnd = m.end;
+    }
+    if (lastEnd < text.length) {
+      children.add(TextSpan(text: text.substring(lastEnd)));
+    }
+    return TextSpan(style: style, children: children);
   }
 }

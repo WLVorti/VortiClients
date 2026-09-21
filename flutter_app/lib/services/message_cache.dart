@@ -11,7 +11,7 @@ class MessageCache {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       p.join(dir.path, 'messages_cache.db'),
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE messages (
@@ -34,7 +34,9 @@ class MessageCache {
             edited_text TEXT,
             status TEXT NOT NULL DEFAULT 'sent',
             key_type TEXT,
-            plain_text TEXT
+            plain_text TEXT,
+            sender_key_id TEXT,
+            recipient_key_id TEXT
           )
         ''');
         await db.execute('CREATE INDEX idx_messages_chat ON messages(chat_id, created_at)');
@@ -51,6 +53,10 @@ class MessageCache {
           await db.execute("ALTER TABLE messages ADD COLUMN sticker_image_url TEXT");
           await db.execute("ALTER TABLE messages ADD COLUMN sticker_emoji TEXT");
           await db.execute("ALTER TABLE messages ADD COLUMN sticker_pack_id TEXT");
+        }
+        if (oldVersion < 5) {
+          await db.execute("ALTER TABLE messages ADD COLUMN sender_key_id TEXT");
+          await db.execute("ALTER TABLE messages ADD COLUMN recipient_key_id TEXT");
         }
       },
     );

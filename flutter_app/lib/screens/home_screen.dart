@@ -10,6 +10,7 @@ import '../l10n/app_localizations.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/models.dart';
 import '../utils/avatar_utils.dart';
+import '../utils/kolobok_utils.dart';
 import 'chat_screen.dart';
 import 'auth_screen.dart';
 import 'profile_screen.dart';
@@ -127,6 +128,10 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
   final Map<String, int> _unreadCounts = {};
   final Set<String> _onlineUsers = {};
   bool _isLoading = true;
+  String? _savedChatId;
+  String? _savedLastMessage;
+  int? _savedLastMessageAt;
+  String? _savedLastMessageKeyType;
   Function(Map<String, dynamic>)? _messageHandler;
   VoidCallback? _onlineHandler;
   final _searchController = TextEditingController();
@@ -183,12 +188,21 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
 
   Future<void> _loadData() async {
     try {
+      String? savedId = await widget.api.getOrCreateSavedChat();
       final chats = await widget.api.getChats();
+      savedId ??= chats.where((c) => c.type == 'saved').firstOrNull?.id;
       await ChatCache.saveChats(chats);
       if (mounted) {
         setState(() {
+          _savedChatId = savedId;
           _chats = _filterChats(chats);
           _isLoading = false;
+          if (savedId != null) {
+            final savedChat = chats.where((c) => c.id == savedId).firstOrNull;
+            _savedLastMessage = savedChat?.lastMessage;
+            _savedLastMessageAt = savedChat?.lastMessageAt;
+            _savedLastMessageKeyType = savedChat?.lastMessageKeyType;
+          }
         });
 
         final unread = await widget.api.getUnreadCounts();
@@ -272,6 +286,15 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
         final senderId = msg['userId'];
         final currentUserId = widget.api.userId;
 
+        // Обновляем превью "Избранного" независимо от отправителя
+        if (_savedChatId != null && chatId == _savedChatId) {
+          setState(() {
+            _savedLastMessage = msg['text'];
+            _savedLastMessageAt = msg['timestamp'];
+            _savedLastMessageKeyType = msg['keyType'];
+          });
+        }
+
         if (senderId != currentUserId) {
           final muted = await MuteService.isMuted(chatId);
           setState(() {
@@ -314,7 +337,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
   Future<void> _refreshChats() async {
     final chats = await widget.api.getChats();
     if (mounted) {
-      setState(() => _chats = chats);
+      setState(() => _chats = chats.where((c) => c.type != 'saved').toList());
     }
   }
 
@@ -352,6 +375,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
     String? avatarUrl,
     String? otherUserId,
     bool initialOnline = false,
+    String chatType = 'direct',
   }) {
     Navigator.of(context)
         .push(
@@ -363,7 +387,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
               avatarUrl: avatarUrl,
               otherUserId: otherUserId,
               initialOnline: initialOnline,
-              chatType: 'direct',
+              chatType: chatType,
               onMessagesRead: () => _markChatAsRead(chatId),
             ),
           ),
@@ -437,7 +461,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                                     style: const TextStyle(fontWeight: FontWeight.w600),
                                   ),
                                   subtitle: Text(
-                                    '${r.senderName}: ${r.text}',
+                                    '${r.senderName}: ${_getLastMessageDisplay(r.text)}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -463,14 +487,19 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                               },
                             ),
                           )
-                    : _chats.isEmpty
+                    : (_chats.isEmpty && _savedChatId == null)
                         ? Center(child: Text(AppLocalizations.of(context).noChatsYet))
                         : RefreshIndicator(
                             onRefresh: _loadData,
                             child: ListView.builder(
-                              itemCount: _chats.length,
+                              itemCount: (_savedChatId != null ? 1 : 0) + _chats.length,
                               itemBuilder: (_, i) {
-                                final chat = _chats[i];
+                                final hasSaved = _savedChatId != null;
+                                if (hasSaved && i == 0) {
+                                  return _buildSavedTile();
+                                }
+                                final chatIndex = i - (hasSaved ? 1 : 0);
+                                final chat = _chats[chatIndex];
                                 final unread = _unreadCounts[chat.id] ?? 0;
                                 final currentUserId = widget.api.userId;
                                 final otherUserId = chat.participants.firstWhere(
@@ -520,13 +549,12 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
                                     ),
                                   ),
                                   title: Text(chat.name ?? AppLocalizations.of(context).chat),
-                                  subtitle: Text(
-                                    chat.lastMessage ?? '',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  subtitle: _buildLastMessagePreview(
+                                    chat.lastMessage,
+                                    Theme.of(context).textTheme.bodySmall?.copyWith(
                                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     ),
+                                    keyType: chat.lastMessageKeyType,
                                   ),
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -573,6 +601,36 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSavedTile() {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        child: Icon(Icons.bookmark,
+            color: Theme.of(context).colorScheme.onPrimary),
+      ),
+      title: Text(
+        l10n.savedMessages,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      subtitle: _buildLastMessagePreview(
+        _savedLastMessage,
+        theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        keyType: _savedLastMessageKeyType,
+      ),
+      trailing: _savedLastMessageAt != null
+          ? Text(_formatTime(_savedLastMessageAt!), style: theme.textTheme.bodySmall)
+          : null,
+      onTap: () {
+        final id = _savedChatId;
+        if (id != null) _openChat(id, l10n.savedMessages, chatType: 'saved');
+      },
     );
   }
 
@@ -623,6 +681,51 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
           ),
         ],
       ),
+    );
+  }
+
+  String? _specialLastMessageText(String? lastMessage, {String? keyType}) {
+    if (lastMessage == null || lastMessage.isEmpty) return '';
+
+    if (keyType == 'e2ee_v1') {
+      return '🔒 Encrypted message';
+    }
+
+    final lowerMessage = lastMessage.toLowerCase();
+    if (lowerMessage.contains('[file]')) {
+      final startIdx = lowerMessage.indexOf('[file]');
+      final fileName = lastMessage.substring(startIdx + 6).trim();
+      if (fileName.isEmpty) return AppLocalizations.of(context).file;
+
+      final ext = fileName.split('.').last.toLowerCase();
+      final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(ext);
+
+      return isImage ? AppLocalizations.of(context).photo : AppLocalizations.of(context).file;
+    }
+
+    return null;
+  }
+
+  String _getLastMessageDisplay(String? lastMessage, {String? keyType}) {
+    final special = _specialLastMessageText(lastMessage, keyType: keyType);
+    if (special != null) return special;
+    return lastMessage!.replaceAll(RegExp(r'::kolobok:[A-Za-z0-9_\-]+::|:k\d+:'), '🌀');
+  }
+
+  Widget _buildLastMessagePreview(String? lastMessage, TextStyle? style, {String? keyType}) {
+    final special = _specialLastMessageText(lastMessage, keyType: keyType);
+    if (special != null) {
+      return Text(
+        special,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style,
+      );
+    }
+    return Text.rich(
+      TextSpan(style: style, children: kolobokPreviewSpans(lastMessage!)),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 
@@ -852,7 +955,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                                     style: const TextStyle(fontWeight: FontWeight.w600),
                                   ),
                                   subtitle: Text(
-                                    '${r.senderName}: ${r.text}',
+                                    '${r.senderName}: ${_getLastMessageDisplay(r.text)}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -900,13 +1003,12 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                  subtitle: Text(
-                                    group.lastMessage ?? '',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  subtitle: _buildLastMessagePreview(
+                                    group.lastMessage,
+                                    Theme.of(context).textTheme.bodySmall?.copyWith(
                                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     ),
+                                    keyType: group.lastMessageKeyType,
                                   ),
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -1183,6 +1285,51 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
           ),
         ),
       ),
+    );
+  }
+
+  String? _specialLastMessageText(String? lastMessage, {String? keyType}) {
+    if (lastMessage == null || lastMessage.isEmpty) return '';
+
+    if (keyType == 'e2ee_v1') {
+      return '🔒 Encrypted message';
+    }
+
+    final lowerMessage = lastMessage.toLowerCase();
+    if (lowerMessage.contains('[file]')) {
+      final startIdx = lowerMessage.indexOf('[file]');
+      final fileName = lastMessage.substring(startIdx + 6).trim();
+      if (fileName.isEmpty) return AppLocalizations.of(context).file;
+
+      final ext = fileName.split('.').last.toLowerCase();
+      final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(ext);
+
+      return isImage ? AppLocalizations.of(context).photo : AppLocalizations.of(context).file;
+    }
+
+    return null;
+  }
+
+  String _getLastMessageDisplay(String? lastMessage, {String? keyType}) {
+    final special = _specialLastMessageText(lastMessage, keyType: keyType);
+    if (special != null) return special;
+    return lastMessage!.replaceAll(RegExp(r'::kolobok:[A-Za-z0-9_\-]+::|:k\d+:'), '🌀');
+  }
+
+  Widget _buildLastMessagePreview(String? lastMessage, TextStyle? style, {String? keyType}) {
+    final special = _specialLastMessageText(lastMessage, keyType: keyType);
+    if (special != null) {
+      return Text(
+        special,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style,
+      );
+    }
+    return Text.rich(
+      TextSpan(style: style, children: kolobokPreviewSpans(lastMessage!)),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 

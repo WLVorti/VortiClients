@@ -38,6 +38,7 @@ function showHome() {
         </button>
         <div class="chat-input-wrap">
           <input type="text" id="chatInput" placeholder="Message..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}">
+          <div class="chat-input-overlay" id="chatInputOverlay"></div>
         </div>
         <button class="emoji-btn" onclick="toggleEmojiPanel(event)" title="Emoji" type="button">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
@@ -157,6 +158,7 @@ function showHome() {
     Api.profile = p;
     renderChats();
   });
+  wireChatInputOverlay();
 }
 
 // ---- E2EE Passphrase Dialog ----
@@ -296,7 +298,7 @@ function renderChatsList() {
             <span class="chat-time">${time}</span>
           </div>
           <div class="chat-bottom">
-            <span class="chat-msg">${chat.last_message_key_type === 'e2ee_v1' ? '🔒 Encrypted message' : escapeHtml(chat.last_message || '')}</span>
+            <span class="chat-msg">${chat.last_message_key_type === 'e2ee_v1' ? '🔒 Encrypted message' : kolobokizePreview(escapeHtml(chat.last_message || ''))}</span>
             ${unread > 0 ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
           </div>
         </div>
@@ -347,7 +349,7 @@ async function renderCommunities() {
             <span class="chat-time">${g.last_message_at ? fmtTime(g.last_message_at) : ''}</span>
           </div>
           <div class="chat-bottom">
-            <span class="chat-msg">${escapeHtml(g.last_message || '')}</span>
+            <span class="chat-msg">${kolobokizePreview(escapeHtml(g.last_message || ''))}</span>
             ${unread > 0 ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
           </div>
         </div>
@@ -1737,6 +1739,7 @@ function openChat(chatId, name, isOnline, otherUserId, avatarUrl) {
         </button>
         <div class="chat-input-wrap">
           <input type="text" id="chatInputMobile" placeholder="Message..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}">
+          <div class="chat-input-overlay" id="chatInputMobileOverlay"></div>
         </div>
         <button class="emoji-btn" onclick="toggleEmojiPanel(event)" title="Emoji" type="button">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
@@ -1760,6 +1763,7 @@ function openChat(chatId, name, isOnline, otherUserId, avatarUrl) {
   connectWs(chatId);
 
   document.addEventListener('paste', chatPasteHandler);
+  wireChatInputOverlay();
 }
 
 function chatPasteHandler(e) {
@@ -1919,7 +1923,7 @@ function renderMessage(m, isGroup) {
   // Reply preview
   let replyHtml = '';
   if (m.reply) {
-    const replyText = escapeHtml(m.reply.replyText || '');
+    const replyText = kolobokize(escapeHtml(m.reply.replyText || ''));
     const replyUser = escapeHtml(m.reply.replyUser || '');
     replyHtml = `<div class="msg-reply" onclick="scrollToMessage('${m.reply.replyId}')"><span class="msg-reply-user">${replyUser}</span><span class="msg-reply-text">${replyText}</span></div>`;
   }
@@ -1936,7 +1940,7 @@ function renderMessage(m, isGroup) {
         <div class="msg-bubble">
           ${replyHtml}
           ${mediaHtml}
-          ${m.text && !m.text.startsWith('[File]') ? `<div class="msg-text">${escapeHtml(_decryptedTexts[m.id] ?? (m.key_type === 'e2ee_v1' ? '🔒 Encrypted message' : m.text))}</div>` : ''}
+          ${m.text && !m.text.startsWith('[File]') ? `<div class="msg-text">${kolobokize(escapeHtml(_decryptedTexts[m.id] ?? (m.key_type === 'e2ee_v1' ? '🔒 Encrypted message' : m.text)))}</div>` : ''}
           <div class="msg-meta">
             <span class="msg-time">${time}</span>
             ${m.edited ? '<span class="msg-edited">edited</span>' : ''}
@@ -2065,6 +2069,7 @@ function startEdit(messageId) {
   const input = document.getElementById(isDesktop ? 'chatInput' : 'chatInputMobile');
   input.value = originalText;
   input.focus();
+  syncChatInputOverlay(input);
   // Override sendMessage temporarily to edit
   const originalSend = sendMessage;
   window.__editMessageId = messageId;
@@ -2073,6 +2078,7 @@ function startEdit(messageId) {
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
+    syncChatInputOverlay(input);
     cancelReply();
     const ok = await Api.editMessage(messageId, text);
     if (ok) {
@@ -2141,9 +2147,9 @@ async function onMediaPicked(e) {
   e.target.value = '';
   if (!file || !currentChatId) return;
 
-  const maxSize = 10 * 1024 * 1024;
+  const maxSize = 1024 * 1024 * 1024;
   if (file.size > maxSize) {
-    showToast('File too large (max 10 MB)');
+    showToast('File too large (max 1 GB)');
     return;
   }
 
@@ -2281,6 +2287,7 @@ async function sendMessage() {
     const file = pendingMediaFile;
     cancelMediaPreview();
     input.value = '';
+    syncChatInputOverlay(input);
     showToast('Uploading...');
     const result = await Api.uploadFile(file);
     if (!result.fileId) { showToast('Upload failed'); return; }
@@ -2323,6 +2330,7 @@ async function sendMessage() {
   const sent = sendViaWs(payload);
   if (sent) {
     input.value = '';
+    syncChatInputOverlay(input);
     addTempMessage(keyType === 'e2ee_v1' ? text : sendText, payload.tempId, currentChatType === 'group', keyType, text);
   }
   cancelReply();
@@ -2554,16 +2562,108 @@ function fmtFullDate(ts) {
 
 const EMOJIS = ['😀','😃','😄','😁','😅','😂','🤣','😊','😇','🙂','😉','😌','😍','🥰','😘','😗','😙','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🥴','😵','🤯','🤠','🥳','🥺','😢','😭','😤','😠','😡','🤬','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖','😺','😸','😹','😻','😼','😽','🙀','😿','😾','💋','👋','🤚','🖐','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦵','🦶','👂','🦻','👃','🧠','🦷','🦴','👀','👁','👅','👄','💘','❤️','💓','💔','💕','💖','💗','💙','💚','💛','🧡','💜','🖤','🤍','🤎','💞','💝','❤️‍🔥','❣️','💟','💌','💤','💢','💣','💥','💦','💨','💫','💬','🗨️','🗯️','💭','🕳️','👤','👥','🗣️','👣','⭐','🌟','✨','⚡','🔥','💥','💫','💦','💨','☀️','🌤️','⛅','🌥️','☁️','🌦️','🌧️','⛈️','🌩️','🌨️','❄️','☃️','⛄','🌬️','💨','🌀','🌪️','🌫️','🌈','☔','☂️','💧','💦','🌊','🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶','🫑','🌽','🥕','🧄','🧅','🥔','🍠','🥐','🍞','🥖','🥨','🧀','🥚','🍳','🥞','🧇','🥓','🥩','🍗','🍖','🦴','🌭','🍔','🍟','🍕','🥪','🥙','🧆','🌮','🌯','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥠','🥮','🍡','🍧','🍨','🍦','🥧','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','💎','🔮','🪄','🎮','🕹️','🎰','🎲','♠️','♥️','♦️','♣️','🃏','🀄','🎴','🎭','🎨','🧩','🎯','🎳','🎪','🎤','🎧','🎼','🎹','🥁','🪘','🎷','🎺','🎸','🪕','🎻','🎲','♟️','🎯','🎱','🏀','🏈','⚽','⚾','🎾','🏐','🏉','🎱','🏓','🏸','🥊','🥋','⛸️','🛷','🎿','⛷️','🏂','🪂','🏋️','🤼','🤸','🤺','⛹️','🤾','🏌️','🏇','🧘','🏄','🏊','🤽','🚣','🧗','🚵','🚴','🎪','🎭','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🎷','🎺','🎸','🎻','🎲','♟️','🎯','🎱','🏀','🏈','⚽','⚾','🎾','🏐','🏉','🎱','🏓','🏸','🥊','🥋','⛸️','🛷','🎿','⛷️','🏂','🪂','🏋️','🤼','🤸','🤺','⛹️','🤾','🏌️','🏇','🧘','🏄','🏊','🤽','🚣','🧗','🚵','🚴','🚣','🏊','🤽','🚣','🧗','🚵','🚴','🚣','🏊','🤽','🚣','🧗','🚵','🚴','🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵','🛺','🚲','🛴','🛹','🚏','🛣️','🛤️','⛽','🛳️','⛴️','🛥️','🚢','✈️','🛩️','🛫','🛬','💺','🚁','🚟','🚠','🚡','🛰️','🚀','🛸','🏠','🏡','🏘️','🏚️','🏗️','🏢','🏭','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏯','🏰','💒','🗼','🗽','⛪','🕌','🕍','🛕','🕋','⛩️','🛤️','🌋','🗻','🏔️','⛰️','🌄','🌅','🏕️','🏖️','🏜️','🏝️','🏞️','🌇','🌆','🌃','🏙️','🌌','🌉','🎠','🎡','🎢','🚂','🚃','🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚝','🚞','🚋','🚌','🚍','🚎','🚐','🚑','🚒','🚓','🚔','🚕','🚖','🚗','🚘','🚙','🚚','🚛','🚜','🏎️','🏍️','🛵','🛺','🚲','🛴','🛹','🛼','🚏','🛣️','🛤️','⛽','🛳️','⛴️','🛥️','🚢','✈️','🛩️','🛫','🛬','💺','🚁','🚟','🚠','🚡','🛰️','🚀','🛸','🪐','🌠','⭐','🌟','✨','⚡','☄️','💥','🔥','🌪️','🌈','☀️','🌤️','⛅','🌥️','☁️','🌦️','🌧️','⛈️','🌩️','🌨️','❄️','☃️','⛄','🌬️','💨','💧','💦','🌊','☂️','☔','⚡','🔥','💫','💥'];
 
+const KOLOBOKS = ['acute_mini','aggressive_mini','air_kiss_mini','angel_mini','beee_mini','biggrin_mini','biggrin_mini2','blum_mini','blush_mini','bo_mini','bomb_mini','boredom_mini','bye_mini','chok_mini','clapping_mini','cray_mini','cray_mini2','crazy_mini','dance_mini','dash_mini','diablo_mini','dirol_mini','drink_mini','drink2_mini','fool_mini','fool_mini2','good_mini','greeting_mini','happy_mini','heart_mini','help_mini','kiss_mini','kiss3_mini','laugh_mini','laugh_mini2','lol_mini','lol_mini2','mad_mini','mail1_mini','mamba_mini','man_in_love_mini','mocking_mini','music_mini','music_mini2','nea_mini','new_russian_mini','ok_mini','pardon_mini','rofl_mini','rolleyes_mini','rose_mini','sad_mini','sad_mini2','scratch_one-s_head_mini','secret_mini','shout_mini','smile_mini','smile_mini2','sorry_mini','stop_mini','unknw_mini','unsure_mini','vava_mini','wacko_mini','wacko_mini2','wink_mini','yahoo_mini','yes_mini'];
+
 function toggleEmojiPanel(e) {
   e.stopPropagation();
   const isDesktop = window.innerWidth >= 768;
   const panel = document.getElementById(isDesktop ? 'emojiPanelDesktop' : 'emojiPanel');
   if (!panel) return;
   if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
-  if (!panel.children.length) {
-    panel.innerHTML = EMOJIS.map(e => `<button class="emoji-item" type="button" onclick="insertEmoji('${e}')">${e}</button>`).join('');
+  if (!panel.querySelector('.emoji-tabs') && !panel.querySelector('.emoji-grid')) {
+    const tabs = document.createElement('div');
+    tabs.className = 'emoji-tabs';
+    tabs.innerHTML = '<button class="emoji-tab active" type="button" data-tab="emoji" onclick="switchEmojiTab(this,\'emoji\')">🙂</button><button class="emoji-tab" type="button" data-tab="kolobok" onclick="switchEmojiTab(this,\'kolobok\')"><img class="emoji-tab-kolobok" src="/mini/acute_mini.gif" alt="" loading="lazy" decoding="async"></button>';
+    panel.appendChild(tabs);
+    const grid = document.createElement('div');
+    grid.className = 'emoji-grid';
+    grid.innerHTML = EMOJIS.map(e => `<button class="emoji-item" type="button" onclick="insertEmoji('${e}')">${e}</button>`).join('');
+    panel.appendChild(grid);
   }
-  panel.style.display = 'grid';
+  panel.style.display = 'block';
+}
+
+function switchEmojiTab(btn, tab) {
+  const panel = btn.closest('.emoji-panel');
+  if (!panel) return;
+  [...panel.querySelectorAll('.emoji-tab')].forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  const grid = panel.querySelector('.emoji-grid');
+  if (!grid) return;
+  if (tab === 'kolobok') {
+    if (!grid.dataset.kolobokBuilt) {
+      grid.innerHTML = KOLOBOKS.map(n => `<button class="emoji-item emoji-gif" type="button" onclick="insertKolobok('${n}')"><img src="/mini/${n}.gif" alt="${n}" loading="lazy" decoding="async"></button>`).join('');
+      grid.dataset.kolobokBuilt = '1';
+    }
+  } else if (grid.dataset.kolobokBuilt) {
+    grid.innerHTML = EMOJIS.map(e => `<button class="emoji-item" type="button" onclick="insertEmoji('${e}')">${e}</button>`).join('');
+    delete grid.dataset.kolobokBuilt;
+  }
+}
+
+function insertKolobok(name) {
+  const isDesktop = window.innerWidth >= 768;
+  const input = document.getElementById(isDesktop ? 'chatInput' : 'chatInputMobile');
+  if (input) {
+    const start = input.selectionStart || 0;
+    const end = input.selectionEnd || 0;
+    const idx = KOLOBOKS.indexOf(name);
+    const marker = idx >= 0 ? `:k${idx}:` : `::kolobok:${name}::`;
+    input.value = input.value.substring(0, start) + marker + input.value.substring(end);
+    input.selectionStart = input.selectionEnd = start + marker.length;
+    syncChatInputOverlay(input);
+    input.focus();
+  }
+}
+
+function kolobokize(text) {
+  if (!text || (text.indexOf('::kolobok:') === -1 && !/:k\d+:/.test(text))) return text;
+  return text.replace(/::kolobok:([A-Za-z0-9_-]+)::|:k(\d+):/g, (_, name, idx) => {
+    const n = name
+      ? (KOLOBOKS.includes(name) ? name : null)
+      : (KOLOBOKS[+idx] || null);
+    if (n) return `<img class="kolobok-inline" src="/mini/${n}.gif" alt="${n}" loading="lazy" decoding="async">`;
+    return name ? `::kolobok:${name}::` : `:k${idx}:`;
+  });
+}
+
+function kolobokizePreview(text) {
+  if (!text || (text.indexOf('::kolobok:') === -1 && !/:k\d+:/.test(text))) return text;
+  return text.replace(/::kolobok:[A-Za-z0-9_-]+::|:k\d+:/g, '🌀');
+}
+
+function syncChatInputOverlay(input) {
+  const wrap = input?.closest('.chat-input-wrap');
+  const overlay = wrap && wrap.querySelector('.chat-input-overlay');
+  if (!overlay) return;
+  const cs = getComputedStyle(input);
+  overlay.style.left = cs.paddingLeft;
+  overlay.style.right = cs.paddingRight;
+  overlay.style.fontSize = cs.fontSize;
+  overlay.style.fontFamily = cs.fontFamily;
+  overlay.innerHTML = input.value ? kolobokize(escapeHtml(input.value)) : '';
+  const probe = document.createElement('span');
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;';
+  probe.style.fontSize = cs.fontSize;
+  probe.style.fontFamily = cs.fontFamily;
+  document.body.appendChild(probe);
+  overlay.querySelectorAll('.kolobok-inline').forEach(img => {
+    probe.textContent = `:k${KOLOBOKS.indexOf(img.alt)}:`;
+    img.style.width = `${probe.getBoundingClientRect().width}px`;
+  });
+  probe.remove();
+  overlay.style.transform = `translateX(${-input.scrollLeft}px)`;
+}
+
+function wireChatInputOverlay() {
+  ['chatInput', 'chatInputMobile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.dataset.overlayWired) {
+      el.dataset.overlayWired = '1';
+      el.addEventListener('input', () => syncChatInputOverlay(el));
+      el.addEventListener('scroll', () => syncChatInputOverlay(el));
+      syncChatInputOverlay(el);
+    }
+  });
 }
 
 document.addEventListener('click', (e) => {
@@ -2583,6 +2683,7 @@ function insertEmoji(emoji) {
     const end = input.selectionEnd || 0;
     input.value = input.value.substring(0, start) + emoji + input.value.substring(end);
     input.selectionStart = input.selectionEnd = start + emoji.length;
+    syncChatInputOverlay(input);
     input.focus();
   }
 }

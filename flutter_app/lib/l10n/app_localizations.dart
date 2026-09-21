@@ -52,7 +52,12 @@ class AppLocalizations {
   String get delete => isRu ? 'Удалить' : 'Delete';
   String get edit => isRu ? 'Редактировать' : 'Edit';
   String get reply => isRu ? 'Ответить' : 'Reply';
+  String get forward => isRu ? 'Переслать' : 'Forward';
+  String get forwarding => isRu ? 'Пересылка' : 'Forwarding';
+  String get forwarded => isRu ? 'Переслано' : 'Forwarded';
+  String get sticker => isRu ? 'Стикер' : 'Sticker';
   String get replyToYourself => isRu ? 'Ответ себе' : 'Reply to yourself';
+  String get youLabel => isRu ? 'Вы' : 'You';
   String get replyToMessage => isRu ? 'Ответ на сообщение' : 'Reply to message';
   String get replyTo => isRu ? 'Ответ' : 'Reply to';
   String get messageDeleted => isRu ? 'Сообщение удалено' : 'Message deleted';
@@ -137,6 +142,7 @@ class AppLocalizations {
   String get appLanguage => isRu ? 'Язык приложения' : 'App language';
   String get searchMessages => isRu ? 'Поиск сообщений' : 'Search messages';
   String get noChatsYet => isRu ? 'Нет чатов' : 'No chats yet';
+  String get savedMessages => isRu ? 'Избранное' : 'Saved messages';
   String get forwardTo => isRu ? 'Переслать в чат' : 'Forward to chat';
   String get sharedContent => isRu ? 'Отправленный контент' : 'Shared content';
   String get shareSent => isRu ? 'Отправлено' : 'Sent';
@@ -260,6 +266,13 @@ class AppLocalizations {
   }
 
   String get quickReaction => isRu ? 'Быстрая реакция' : 'Quick reaction';
+  String get fileSaved => isRu ? 'Файл сохранён' : 'File saved';
+  String get fileSaveError => isRu ? 'Не удалось сохранить файл' : 'Failed to save file';
+  String get saving => isRu ? 'Сохранение...' : 'Saving...';
+  String get autoSaveMedia => isRu ? 'Сохранять медиа в галерею' : 'Save media to gallery';
+  String get autoSaveMediaSubtitle => isRu
+      ? 'Автоматически сохранять полученные фото и видео в галерею'
+      : 'Automatically save received photos and videos to the gallery';
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

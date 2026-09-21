@@ -102,7 +102,7 @@ class _VortiAppState extends State<VortiApp> {
       await _api.loadCredentials().timeout(const Duration(seconds: 10));
       ApiService.addLog('_checkAuth: credentials loaded');
 
-      // Check if session expired due to inactivity (> 7 days)
+      // Check if session expired due to inactivity (> 6 months)
       if (_api.token != null) {
         final expired = await _api.isSessionExpired();
         if (expired) {

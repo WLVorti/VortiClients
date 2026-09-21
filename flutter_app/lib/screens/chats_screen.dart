@@ -6,6 +6,7 @@ import '../services/chat_cache.dart';
 import '../services/mute_service.dart';
 import '../models/models.dart';
 import '../utils/avatar_utils.dart';
+import '../utils/kolobok_utils.dart';
 import 'chat_screen.dart';
 import 'auth_screen.dart';
 import 'profile_screen.dart';
@@ -26,6 +27,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
   final Map<String, int> _unreadCounts = {};
   final Set<String> _onlineUsers = {};
   bool _isLoading = true;
+  String? _savedChatId;
+  String? _savedLastMessage;
+  int? _savedLastMessageAt;
+  String? _savedLastMessageKeyType;
 
   @override
   void initState() {
@@ -42,15 +47,27 @@ class _ChatsScreenState extends State<ChatsScreen> {
   Future<void> _loadData() async {
     print('[ChatsScreen] _loadData started');
     try {
+      String? savedId = await widget.api.getOrCreateSavedChat();
       final chats = await widget.api.getChats();
+      // fallback: если getOrCreateSavedChat не сработал, но saved-чат уже есть — берём его
+      savedId ??= chats.where((c) => c.type == 'saved').firstOrNull?.id;
       print('[ChatsScreen] Got ${chats.length} chats');
       for (var c in chats) {
         print('[ChatsScreen] Chat ${c.name}: avatarUrl=${c.avatarUrl}');
       }
       if (mounted) {
         setState(() {
-          _chats = chats;
+          _savedChatId = savedId;
+          // Исключаем saved-чат из обычного списка — он показан закреплённым элементом
+          _chats = chats.where((c) => c.type != 'saved').toList();
           _isLoading = false;
+          // превью "Избранного" из его последнего сообщения
+          if (savedId != null) {
+            final savedChat = chats.where((c) => c.id == savedId).firstOrNull;
+            _savedLastMessage = savedChat?.lastMessage;
+            _savedLastMessageAt = savedChat?.lastMessageAt;
+            _savedLastMessageKeyType = savedChat?.lastMessageKeyType;
+          }
         });
         print('[ChatsScreen] _chats set with ${_chats.length} items');
         // Cache the fresh data
@@ -82,6 +99,15 @@ class _ChatsScreenState extends State<ChatsScreen> {
         final chatId = msg['chatId'];
         final senderId = msg['userId'];
         final currentUserId = widget.api.userId;
+
+        // Обновляем превью "Избранного" независимо от отправителя
+        if (_savedChatId != null && chatId == _savedChatId) {
+          setState(() {
+            _savedLastMessage = msg['text'];
+            _savedLastMessageAt = msg['timestamp'];
+            _savedLastMessageKeyType = msg['keyType'];
+          });
+        }
 
         // Не увеличиваем счётчик если сообщение от себя
         if (senderId != currentUserId && !await MuteService.isMuted(chatId)) {
@@ -130,7 +156,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
   Future<void> _refreshChats() async {
     final chats = await widget.api.getChats();
     if (mounted) {
-      setState(() => _chats = chats);
+      setState(() => _chats = chats.where((c) => c.type != 'saved').toList());
     }
   }
 
@@ -159,7 +185,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
     );
   }
 
-  void _openChat(String chatId, String name) {
+  void _openChat(String chatId, String name, {String chatType = 'direct'}) {
     Navigator.of(context)
         .push(
           MaterialPageRoute(
@@ -167,6 +193,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
               api: widget.api,
               chatId: chatId,
               chatName: name,
+              chatType: chatType,
               onMessagesRead: () => _markChatAsRead(chatId),
             ),
           ),
@@ -174,9 +201,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
         .then((_) => _loadData());
   }
 
-  String _getLastMessageDisplay(String? lastMessage, {String? keyType}) {
+  String? _specialLastMessageText(String? lastMessage, {String? keyType}) {
     if (lastMessage == null || lastMessage.isEmpty) return '';
-    
+
     if (keyType == 'e2ee_v1') {
       return '🔒 Encrypted message';
     }
@@ -194,8 +221,25 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
       return isImage ? AppLocalizations.of(context).photo : AppLocalizations.of(context).file;
     }
-    
-    return lastMessage;
+
+    return null;
+  }
+
+  Widget _buildLastMessagePreview(String? lastMessage, TextStyle? style, {String? keyType}) {
+    final special = _specialLastMessageText(lastMessage, keyType: keyType);
+    if (special != null) {
+      return Text(
+        special,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style,
+      );
+    }
+    return Text.rich(
+      TextSpan(style: style, children: kolobokPreviewSpans(lastMessage!)),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
   }
 
   Widget _buildAvatar(String? avatarUrl, String fallbackChar, {String? userId}) {
@@ -248,14 +292,18 @@ class _ChatsScreenState extends State<ChatsScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _chats.isEmpty
-          ? Center(child: Text(AppLocalizations.of(context).noChatsYet))
           : RefreshIndicator(
               onRefresh: _loadData,
               child: ListView.builder(
-                itemCount: _chats.length,
+                // Всегда показываем "Избранное" первым элементом
+                itemCount: (_savedChatId != null ? 1 : 0) + _chats.length,
                 itemBuilder: (_, i) {
-                  final chat = _chats[i];
+                  final hasSaved = _savedChatId != null;
+                  if (hasSaved && i == 0) {
+                    return _buildSavedTile();
+                  }
+                  final chatIndex = i - (hasSaved ? 1 : 0);
+                  final chat = _chats[chatIndex];
                   final unread = _unreadCounts[chat.id] ?? 0;
                   print(
                     '[ChatList] Building tile for ${chat.name}, avatarUrl=${chat.avatarUrl}',
@@ -268,13 +316,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       userId: chat.id,
                     ),
                     title: Text(chat.name ?? AppLocalizations.of(context).chat),
-                    subtitle: Text(
-                      _getLastMessageDisplay(chat.lastMessage, keyType: chat.lastMessageKeyType),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    subtitle: _buildLastMessagePreview(
+                      chat.lastMessage,
+                      Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
+                      keyType: chat.lastMessageKeyType,
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -315,6 +362,38 @@ class _ChatsScreenState extends State<ChatsScreen> {
         onPressed: _createChat,
         child: const Icon(Icons.add),
       ),
+    );
+  }
+
+  Widget _buildSavedTile() {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: theme.colorScheme.primary,
+        child: Icon(Icons.bookmark, color: theme.colorScheme.onPrimary),
+      ),
+      title: Text(
+        l10n.savedMessages,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      subtitle: _buildLastMessagePreview(
+        _savedLastMessage,
+        theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        keyType: _savedLastMessageKeyType,
+      ),
+      trailing: _savedLastMessageAt != null
+          ? Text(
+              _formatTime(_savedLastMessageAt!),
+              style: theme.textTheme.bodySmall,
+            )
+          : null,
+      onTap: () {
+        final id = _savedChatId;
+        if (id != null) _openChat(id, l10n.savedMessages, chatType: 'saved');
+      },
     );
   }
 

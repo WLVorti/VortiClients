@@ -267,6 +267,8 @@ class Message {
   final MessageStatus status;
   final String? keyType;
   final String? plainText;
+  final String? senderKeyId;
+  final String? recipientKeyId;
 
   Message({
     required this.id,
@@ -289,6 +291,8 @@ class Message {
     this.status = MessageStatus.sent,
     this.keyType,
     this.plainText,
+    this.senderKeyId,
+    this.recipientKeyId,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
@@ -326,6 +330,8 @@ class Message {
       status: parseStatus(json['status']),
       keyType: json['key_type'],
       plainText: json['plain_text'],
+      senderKeyId: json['sender_key_id'] ?? json['senderKeyId'],
+      recipientKeyId: json['recipient_key_id'] ?? json['recipientKeyId'],
     );
   }
 
@@ -351,6 +357,8 @@ class Message {
       'status': status.name,
       'key_type': keyType,
       'plain_text': plainText,
+      'sender_key_id': senderKeyId,
+      'recipient_key_id': recipientKeyId,
     };
   }
 
@@ -362,6 +370,7 @@ class Message {
     String? replyText,
     MessageStatus? status,
     String? plainText,
+    String? fileId,
   }) {
     return Message(
       id: id,
@@ -371,7 +380,7 @@ class Message {
       replyTo: replyTo,
       replyText: replyText ?? this.replyText,
       replyUsername: replyUsername,
-      fileId: fileId,
+      fileId: fileId ?? this.fileId,
       stickerId: stickerId,
       stickerImageUrl: stickerImageUrl,
       stickerEmoji: stickerEmoji,
@@ -383,6 +392,8 @@ class Message {
       status: status ?? this.status,
       keyType: keyType ?? this.keyType,
       plainText: plainText ?? this.plainText,
+      senderKeyId: senderKeyId,
+      recipientKeyId: recipientKeyId,
     );
   }
 }
