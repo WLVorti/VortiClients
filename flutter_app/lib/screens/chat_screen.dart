@@ -1727,7 +1727,11 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
         preferredSize: Size.fromHeight(_activeAudioId != null ? 150 : 88),
         child: Stack(
           children: [
-            Positioned.fill(
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 89,
               child: ClipRect(
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
@@ -1735,7 +1739,11 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
                 ),
               ),
             ),
-            Positioned.fill(
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 89,
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -4432,16 +4440,6 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
                       scheme.primary.withValues(alpha: 0.75),
                     ],
                   ),
-                  border: Border.all(
-                    color: scheme.onPrimary.withValues(alpha: 0.3),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: scheme.primary.withValues(alpha: 0.35),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
                 ),
                 child: Icon(
                   _activeAudioPlaying ? Icons.pause : Icons.play_arrow,
