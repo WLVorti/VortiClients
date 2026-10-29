@@ -1,0 +1,445 @@
+/* ============================================================
+   stylEx — формы входа и регистрации
+   Вынесено из «Самореализации»: тот же тёмный фон, тот же лайм,
+   тот же моно для данных. Файл самодостаточный — открывается
+   вместе с stylEx.html без остального сайта.
+
+   Контраст к --c-bg (AA = 4.5:1):
+     text 16.4   dim 7.6   faint 4.8   hot 6.5   accent 13.4
+
+   Лайм — только в двух местах на этом экране:
+     1) главная кнопка   2) успешное подтверждение
+   Ошибка — --c-hot, и только она. Поля без рамки: снизу линия,
+   рамка появляется на фокусе. Радиуса нет нигде.
+   ============================================================ */
+
+:root {
+  /* ПАЛИТРА */
+  --c-bg:        #08090a;
+  --c-bg-2:      #0c0e10;
+  --c-panel:     #101315;
+  --c-line:      #23272c;
+  --c-line-2:    #171b1f;
+  --c-text:      #e8eae5;
+  --c-dim:       #9aa1aa;
+  --c-faint:     #7b818a;
+  --c-accent:    #c2e04d;
+  --c-accent-2:  #0a0b0c;
+  --c-hot:       #ff5c2a;
+
+  /* производные */
+  --c-accent-line: #37401f;
+  --c-hot-line:    #53291a;
+  --c-ghost:       #5a616a;
+
+  /* ШРИФТЫ */
+  --f-display: "Unbounded", "Trebuchet MS", Verdana, sans-serif;
+  --f-ui:      "Golos Text", "Trebuchet MS", Verdana, sans-serif;
+  --f-mono:    "IBM Plex Mono", Consolas, "Courier New", monospace;
+
+  /* РАЗМЕРЫ */
+  --max: 420px;
+  --gutter: 24px;
+
+  /* ЛЕСТНИЦА — между ступенями пропасть, а не 3px */
+  --fs-page: clamp(28px, 6vw, 38px);
+  --fs-item: 20px;
+  --fs-body: 15px;
+  --fs-meta: 12px;
+  --fs-micro: 10px;
+
+  /* РИТМ ПО ВЕРТИКАЛИ */
+  --gap-sec:  40px;
+  --gap-item: 18px;
+  --gap-air:  26px;
+
+  /* высота интерактивной цели — на телефоне не меньше 44px */
+  --tap: 44px;
+
+  color-scheme: dark;
+  accent-color: var(--c-accent);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--f-ui);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono { font-family: var(--f-mono); }
+
+/* ---------- каркас ---------- */
+.shell {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.auth {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- шапка ---------- */
+.top {
+  border-bottom: 1px solid var(--c-line);
+}
+.top-in {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: var(--tap);
+  text-decoration: none;
+  font-family: var(--f-display);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+.brand i {
+  width: 22px; height: 22px; flex: none;
+  display: grid; place-items: center;
+  background: var(--c-accent);
+  color: var(--c-accent-2);
+  font-style: normal;
+  font-size: 12px;
+}
+.top-x {
+  font-family: var(--f-mono);
+  font-size: var(--fs-meta);
+  color: var(--c-faint);
+}
+
+/* ---------- заголовок экрана ---------- */
+.head { padding: var(--gap-sec) 0 var(--gap-item); }
+.kicker {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--c-ghost);
+  margin-bottom: 14px;
+}
+h1 {
+  margin: 0;
+  font-family: var(--f-display);
+  font-size: var(--fs-page);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -.02em;
+}
+.lead {
+  margin: 14px 0 0;
+  max-width: 46ch;
+  font-size: var(--fs-body);
+  color: var(--c-dim);
+}
+
+/* ---------- смена экрана: вход ↔ регистрация ---------- */
+.swap {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: var(--gap-item);
+  font-size: 14px;
+  color: var(--c-faint);
+}
+.swap a {
+  color: var(--c-text);
+  text-decoration: none;
+  border-bottom: 1px solid var(--c-ghost);
+  padding-bottom: 1px;
+}
+.swap a:hover { border-bottom-color: var(--c-text); }
+
+/* ---------- поля ----------
+   Без рамки: снизу линия, как на странице создания занятия.
+   Рамка появляется только на фокусе и на ошибке. */
+.f { margin-bottom: var(--gap-item); }
+
+.f > label {
+  display: block;
+  margin-bottom: 7px;
+  font-family: var(--f-ui);
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--c-faint);
+}
+
+.f input {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 10px 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--c-line);
+  color: var(--c-text);
+  font-family: var(--f-ui);
+  font-size: 16px;
+  outline: none;
+  border-radius: 0;
+  transition: border-color 120ms ease;
+}
+.f input::placeholder { color: var(--c-ghost); }
+.f input:hover { border-bottom-color: var(--c-ghost); }
+.f input:focus { border-bottom-color: var(--c-text); }
+
+.f input:focus-visible { outline: 0; }
+
+/* пароль с кнопкой «показать» */
+.f-pw { position: relative; }
+.f-pw input { padding-right: 92px; }
+/* «показать» — вторая кнопка, но палец должен попадать так же,
+   поэтому по высоте она равна полю, а не строке подписи */
+.f-pw .peek {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  min-width: 84px;
+  min-height: var(--tap);
+  padding: 0 10px;
+  background: none;
+  border: 0;
+  color: var(--c-faint);
+  font-family: var(--f-ui);
+  font-size: var(--fs-micro);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.f-pw .peek:focus-visible { outline: 2px solid var(--c-accent); outline-offset: -2px; }
+.f-pw .peek:hover { color: var(--c-text); }
+
+/* мелкая подпись, которая меняется по ходу ввода */
+[data-hint] { font-size: var(--fs-micro); color: var(--c-ghost); }
+
+/* подсказка и счётчик символов */
+.f-note {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 7px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  color: var(--c-ghost);
+}
+.f-note .ok { color: var(--c-dim); }
+
+/* ошибка поля: единственное место, где появляется --c-hot */
+.f.err input { border-bottom-color: var(--c-hot); }
+.f.err > label { color: var(--c-hot); }
+.f-err {
+  display: block;
+  margin-top: 7px;
+  font-size: 13px;
+  color: var(--c-hot);
+}
+.f.err .f-note { color: var(--c-faint); }
+
+/* ---------- чекбокс согласия ---------- */
+.chk {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-bottom: var(--gap-item);
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--c-dim);
+  line-height: 1.45;
+}
+/* рамка 18px, но целый ряд .chk кликабелен — это и есть область нажатия */
+.chk input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px; height: 18px; flex: none;
+  margin: 1px 0 0;
+  border: 1px solid var(--c-line);
+  background: none;
+  cursor: pointer;
+  border-radius: 0;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.chk input:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 3px; }
+.chk input:hover { border-color: var(--c-ghost); }
+.chk input:checked { background: var(--c-accent); border-color: var(--c-accent); }
+.chk input:checked::after {
+  content: "";
+  display: block;
+  width: 5px; height: 9px;
+  margin: 2px 0 0 6px;
+  border: solid var(--c-accent-2);
+  border-width: 0 2px 2px 0;
+  transform: rotate(43deg);
+}
+.chk a { color: var(--c-text); text-underline-offset: 3px; }
+.chk.err input { border-color: var(--c-hot); }
+
+/* ---------- кнопки ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: var(--tap);
+  padding: 10px 16px;
+  background: transparent;
+  border: 1px solid var(--c-line);
+  color: var(--c-dim);
+  font-family: var(--f-ui);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 0;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.btn:hover { color: var(--c-text); border-color: var(--c-text); }
+.btn:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+
+/* лайм №1 — главная кнопка экрана */
+.btn-accent {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: var(--c-accent-2);
+  font-weight: 500;
+}
+.btn-accent:hover { background: var(--c-text); border-color: var(--c-text); color: var(--c-bg); }
+
+.btn-block { width: 100%; }
+.btn[disabled] { opacity: .35; cursor: not-allowed; }
+.btn[disabled]:hover { color: var(--c-dim); border-color: var(--c-line); }
+
+.btn-ghost { border-color: transparent; }
+
+/* ---------- уведомление о результате ----------
+   Одна полоса на весь экран: успех — лайм (#2), ошибка — hot */
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-bottom: var(--gap-item);
+  padding: 13px 15px;
+  border: 1px solid var(--c-line);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--c-dim);
+}
+.note b { color: var(--c-text); font-weight: 600; }
+.note-good { border-color: var(--c-accent-line); background: rgba(194, 224, 77, .05); }
+.note-bad  { border-color: var(--c-hot-line); background: rgba(255, 92, 42, .05); }
+.note i {
+  font-style: normal;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  flex: none;
+  padding-top: 3px;
+}
+.note-good i { color: var(--c-accent); }
+.note-bad i { color: var(--c-hot); }
+.note[hidden] { display: none; }
+
+/* ---------- «забыли пароль» и прочее в одну строку ---------- */
+.row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: var(--gap-item);
+}
+.linkbtn {
+  min-height: var(--tap);
+  padding: 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--c-ghost);
+  color: var(--c-dim);
+  font-family: var(--f-ui);
+  font-size: 13px;
+  cursor: pointer;
+}
+.linkbtn:hover { color: var(--c-text); border-bottom-color: var(--c-text); }
+.linkbtn:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+
+/* ---------- демонстрация состояний ---------- */
+.demo { padding: var(--gap-sec) 0; border-top: 1px solid var(--c-line); }
+.demo-t {
+  margin: 0 0 6px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--c-ghost);
+}
+.demo-note {
+  margin: 0 0 var(--gap-item);
+  font-size: 14px;
+  color: var(--c-faint);
+  max-width: 46ch;
+}
+.demo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--gap-item) var(--gap-air);
+  align-items: start;
+}
+.demo-box {
+  border: 1px solid var(--c-line-2);
+  padding: 16px;
+  background: var(--c-bg-2);
+}
+.demo-box > .demo-t { margin-bottom: 14px; }
+.stack { display: grid; gap: 10px; }
+
+/* ---------- подвал ---------- */
+.foot {
+  margin-top: auto;
+  border-top: 1px solid var(--c-line);
+  padding: 20px 0 30px;
+}
+.foot-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  font-size: 13px;
+  color: var(--c-faint);
+}
+.foot-in a { color: var(--c-dim); text-decoration: none; }
+.foot-in a:hover { color: var(--c-text); }
+.foot-in .r { margin-left: auto; font-family: var(--f-mono); font-size: var(--fs-micro); }
+
+/* ---------- телефон ---------- */
+@media (max-width: 560px) {
+  :root { --gutter: 18px; }
+  h1 { font-size: 30px; }
+  .foot-in .r { margin-left: 0; }
+  .row-between { flex-wrap: wrap; }
+}
+
+/* ---------- мелкие экраны: поля на всю ширину, кнопки в столбик ---------- */
+@media (max-width: 380px) {
+  .top-in { min-height: 52px; }
+  .brand { font-size: 12px; }
+  .btn-block + .btn-block { margin-top: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

@@ -2,6 +2,19 @@ let currentTab = 0;
 let pendingMediaFile = null;
 const _decryptedTexts = {}; // msgId -> plaintext
 
+// Переход на площадку «Самореализация» живёт в отдельном модуле
+// js/selfrealize.js вместе со своими стилями css/selfrealize.css.
+// Шапка собирается функцией, а не константой: разметка кнопки берётся из
+// модуля в момент отрисовки, поэтому порядок подключения скриптов решает
+// только то, покажет ли кнопка «уже» или «чуть позже».
+const APP_TITLES = { 0: 'Chats', 1: 'Communities', 2: 'Calls', 3: 'Account' };
+
+function appHeaders(idx) {
+  const title = APP_TITLES[idx] || APP_TITLES[0];
+  const btn = idx === 0 && window.Selfrealize ? window.Selfrealize.headerBtn() : '';
+  return `<h2>${title}</h2>${btn}`;
+}
+
 async function _decryptMsgId(msgId, cipherText, fromUserId) {
   if (_decryptedTexts[msgId] || !fromUserId || fromUserId === Api.userId) return;
   try {
@@ -24,7 +37,7 @@ function showHome() {
     <div class="app-shell">
       <div class="app-main">
         <div class="wf-container" id="waterfall"></div>
-        <div class="chats-header" id="appChatHeader"><h2>Chats</h2></div>
+        <div class="chats-header" id="appChatHeader">${appHeaders(0)}</div>
         <div class="app-body">
           <div class="tab-content" id="tabChats"></div>
         <div class="tab-content" id="tabCommunities" style="display:none"></div>
@@ -81,20 +94,13 @@ function showHome() {
   let switchingTab = false;
   currentTab = 0;
 
-  const tabHeaders = {
-    0: '<h2>Chats</h2>',
-    1: '<h2>Communities</h2>',
-    2: '<h2>Calls</h2>',
-    3: '<h2>Account</h2>',
-  };
-
   function updateAppHeader(idx) {
     const appHeader = document.getElementById('appChatHeader');
     if (!appHeader) return;
     // Don't change if a chat is open (originalHtml is set)
     if (appHeader.dataset.originalHtml !== undefined) return;
     appHeader.style.display = '';
-    appHeader.innerHTML = tabHeaders[idx] || '<h2>Chats</h2>';
+    appHeader.innerHTML = appHeaders(idx);
   }
 
   navBtns.forEach(btn => {
@@ -139,108 +145,17 @@ function showHome() {
   // ---- Start waterfall, load profile, init E2EE ----
   Waterfall.init(document.getElementById('waterfall'));
 
-  // E2EE: restore keys or ask for passphrase
-  (async () => {
-    const restored = await CryptoE2EE.init();
-    if (!restored) {
-      // Show passphrase dialog (blocks waterfall)
-      const phrase = await new Promise(resolve => {
-        showE2EEPassphraseDialog(resolve);
-      });
-      if (phrase) {
-        await CryptoE2EE.initWithPassphrase(phrase, Api.userId);
-      }
-    }
-    // Upload public key once WS is connected (handled on open)
-  })();
+  // E2EE: restore keys from local storage. Recovery-passphrase окно удалено,
+  // поэтому на новом устройстве ключи не поднимутся — direct-сообщения
+  // просто уйдут без сквозного шифрования (sendMessage сам откатывается на
+  // server_encrypted), интерфейс при этом не блокируется.
+  CryptoE2EE.init();
 
   Api.getProfile().then(p => {
     Api.profile = p;
     renderChats();
   });
   wireChatInputOverlay();
-}
-
-// ---- E2EE Passphrase Dialog ----
-function showE2EEPassphraseDialog(resolve) {
-  const overlay = document.createElement('div');
-  overlay.className = 'overlay';
-  let isNew = true;
-
-  const actionBtn = document.createElement('div');
-
-  function render() {
-    overlay.innerHTML = `
-      <div class="dialog">
-        <h3>${isNew ? 'Set recovery passphrase' : 'Enter recovery passphrase'}</h3>
-        <p style="color:#999;margin-bottom:16px;font-size:13px">
-          ${isNew
-            ? 'This passphrase restores your encryption keys on a new device. Save it securely — without it, old private messages become unreadable.'
-            : 'Enter the passphrase you set on your previous device to restore encryption keys.'}
-        </p>
-        <div class="field">
-          <input type="password" class="field-input" id="e2eePhrase" placeholder="Recovery passphrase" autocomplete="off" style="width:100%">
-        </div>
-        ${isNew ? `
-        <div class="field">
-          <input type="password" class="field-input" id="e2eeConfirm" placeholder="Confirm passphrase" autocomplete="off" style="width:100%">
-        </div>` : ''}
-        <div class="field">
-          <label style="color:#999;font-size:12px">
-            <input type="checkbox" id="e2eeShowPhrase"> Show passphrase
-          </label>
-        </div>
-        <div id="e2eeError" style="color:#e53935;margin-bottom:8px;display:none"></div>
-        <div class="dialog-actions" id="e2eeActions"></div>
-      </div>`;
-
-    const actions = overlay.querySelector('#e2eeActions');
-    if (!isNew) {
-      const backBtn = document.createElement('button');
-      backBtn.className = 'btn';
-      backBtn.textContent = 'First time — set new';
-      backBtn.onclick = () => { isNew = true; render(); };
-      actions.appendChild(backBtn);
-    }
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'btn';
-    toggleBtn.textContent = isNew ? 'Use existing phrase' : 'Set new phrase';
-    toggleBtn.onclick = () => { isNew = !isNew; render(); };
-    actions.appendChild(toggleBtn);
-    const submitBtn = document.createElement('button');
-    submitBtn.className = 'btn-primary';
-    submitBtn.textContent = isNew ? 'Set & Continue' : 'Continue';
-    submitBtn.onclick = submit;
-    actions.appendChild(submitBtn);
-
-    overlay.querySelector('#e2eeShowPhrase').onchange = function() {
-      const inputs = overlay.querySelectorAll('#e2eePhrase, #e2eeConfirm');
-      inputs.forEach(i => { if (i) i.type = this.checked ? 'text' : 'password'; });
-    };
-  }
-
-  function submit() {
-    const phrase = overlay.querySelector('#e2eePhrase').value.trim();
-    const err = overlay.querySelector('#e2eeError');
-    if (phrase.length < 4) {
-      err.textContent = 'At least 4 characters';
-      err.style.display = '';
-      return;
-    }
-    if (isNew) {
-      const confirm = overlay.querySelector('#e2eeConfirm').value.trim();
-      if (confirm !== phrase) {
-        err.textContent = 'Passphrases do not match';
-        err.style.display = '';
-        return;
-      }
-    }
-    overlay.remove();
-    resolve(phrase);
-  }
-
-  render();
-  document.body.appendChild(overlay);
 }
 
 // ---- Chats Tab ----
@@ -271,12 +186,34 @@ function renderChatsList() {
 
   const directChats = chatsData.filter(c => c.type === 'direct');
 
+  // Общий чат — не обычный чат из /chats, он живёт отдельно, но в списке
+  // должен быть, иначе после выхода из него непонятно, куда попасть.
+  // general_chat.js ставит GeneralChatEnabled булевым (probe() -> res.ok),
+  // поэтому проверяем именно false, а не строку 'false'.
+  const generalRow = (window.GeneralChatEnabled !== false && typeof window.openGeneralChat === 'function')
+    ? `<div class="chat-row" id="generalChatRow" onclick="window.openGeneralChat()">
+        <div class="chat-avatar chat-avatar--general">#</div>
+        <div class="chat-info">
+          <div class="chat-top">
+            <span class="chat-name">Общий чат</span>
+            <span class="chat-time"></span>
+          </div>
+          <div class="chat-bottom">
+            <span class="chat-msg gc-row-msg">Общий чат — здесь читают все</span>
+          </div>
+        </div>
+      </div>`
+    : '';
+
   if (directChats.length === 0) {
-    el.innerHTML = '<div class="empty-state">No chats yet<br><span class="empty-sub">Tap + to start a new chat</span></div>';
+    el.innerHTML = generalRow
+      ? generalRow + '<div class="empty-state">No chats yet<br><span class="empty-sub">Tap + to start a new chat</span></div>'
+      : '<div class="empty-state">No chats yet<br><span class="empty-sub">Tap + to start a new chat</span></div>';
+    if (generalRow) { try { window.updateGeneralChatRow(); } catch (_) {} }
     return;
   }
 
-  el.innerHTML = directChats.map(chat => {
+  el.innerHTML = generalRow + directChats.map(chat => {
     const otherId = chat.type === 'direct' ? chat.participants?.find(p => p !== Api.userId) : null;
     const name = chat.name || otherId || 'Chat';
     const initial = (name || '?')[0].toUpperCase();
@@ -308,6 +245,7 @@ function renderChatsList() {
 
   // Load avatar images for chat rows
   el.querySelectorAll('.chat-avatar img[data-src]').forEach(img => loadAvatarImage(img, img.dataset.src));
+  if (generalRow) { try { window.updateGeneralChatRow(); } catch (_) {} }
 }
 
 // ---- Communities Tab ----
@@ -883,17 +821,17 @@ async function handleAvatarUpload(input) {
 
 // ---- Theme Settings ----
 const themeDefaults = {
-  '--bg': '#0D0A0F',
-  '--surface': '#1A1218',
-  '--surface-alt': '#241A22',
-  '--primary': '#E53935',
-  '--primary-hover': '#C62828',
-  '--text': '#F0F0F0',
-  '--text-secondary': '#9E9E9E',
-  '--text-muted': '#6B6B6B',
-  '--border': '#3A2A35',
-  '--error': '#EF5350',
-  '--success': '#43a047',
+  '--bg': '#08090a',
+  '--surface': '#101315',
+  '--surface-alt': '#171b1f',
+  '--primary': '#c2e04d',
+  '--primary-hover': '#e8eae5',
+  '--text': '#e8eae5',
+  '--text-secondary': '#9aa1aa',
+  '--text-muted': '#7b818a',
+  '--border': '#23272c',
+  '--error': '#ff5c2a',
+  '--success': '#a9cc3a',
 };
 
 const themeLabels = {
@@ -912,7 +850,23 @@ const themeLabels = {
 
 const themePresets = [
   {
-    name: 'Default',
+    name: 'Lime',
+    colors: {
+      '--bg': '#08090a',
+      '--surface': '#101315',
+      '--surface-alt': '#171b1f',
+      '--primary': '#c2e04d',
+      '--primary-hover': '#e8eae5',
+      '--text': '#e8eae5',
+      '--text-secondary': '#9aa1aa',
+      '--text-muted': '#7b818a',
+      '--border': '#23272c',
+      '--error': '#ff5c2a',
+      '--success': '#a9cc3a',
+    },
+  },
+  {
+    name: 'Ember',
     colors: {
       '--bg': '#0D0A0F',
       '--surface': '#1A1218',
@@ -1759,8 +1713,15 @@ function openChat(chatId, name, isOnline, otherUserId, avatarUrl) {
   appMain.classList.add('has-chat');
   panel.classList.add('panel-open');
 
+  resetHistoryState();
   loadMessages(chatId);
   connectWs(chatId);
+
+  // Доскроллили к началу — подгружаем более старую страницу.
+  const msgBox = document.getElementById('chatMessages');
+  if (msgBox) {
+    msgBox.addEventListener('scroll', maybeLoadOlder, { passive: true });
+  }
 
   document.addEventListener('paste', chatPasteHandler);
   wireChatInputOverlay();
@@ -1844,16 +1805,10 @@ function closeChatSheet() {
     const appHeader = document.getElementById('appChatHeader');
     if (appHeader && appHeader.dataset.originalHtml) {
       const tab = parseInt(appHeader.dataset.originalTab) || currentTab;
-      const tabHeaders = {
-        0: '<h2>Chats</h2>',
-        1: '<h2>Communities</h2>',
-        2: '<h2>Calls</h2>',
-        3: '<h2>Account</h2>',
-      };
       appHeader.style.transition = 'opacity 0.15s ease';
       appHeader.style.opacity = '0';
       setTimeout(() => {
-        appHeader.innerHTML = tabHeaders[tab] || '<h2>Chats</h2>';
+        appHeader.innerHTML = appHeaders(tab);
         requestAnimationFrame(() => {
           appHeader.style.opacity = '1';
         });
@@ -1874,25 +1829,293 @@ function updateChatStatus(isOnline) {
   });
 }
 
+// ---- История сообщений ----
+// Сервер отдаёт страницу и умеет отдавать более старые по `before` (метка
+// времени). Раньше веб звал только первую страницу, и переписка длиннее
+// 50 сообщений просто обрывалась: догрузки не было вовсе.
+const MSG_PAGE = 50;
+let _oldestLoadedAt = null;   // created_at самого старого уже показанного
+let _oldestLoadedId = null;   // id самого старого уже показанного
+let _newestLoadedAt = null;   // created_at самого нового уже показанного
+let _newestLoadedId = null;   // id самого нового уже показанного
+let _hasOlder = true;
+let _loadingOlder = false;
+// Предел догрузки подряд, без прокрутки пользователем: пока контейнер короче
+// экрана, события скролла не будет, и историю нужно добрать самим.
+const AUTO_LOAD_CHAIN = 20;
+// Идентификаторы отрисованных сообщений. Раньше дедуп искал по DOM, то есть
+// O(n) на каждое входящее сообщение: пачка из сотни кадров от сервера
+// превращалась в квадрат.
+let _seenMsgIds = new Set();
+let _wsQueue = [];            // кадры, пришедшие пока грузилась первая страница
+let _chatReady = false;       // первая страница чата отрисована
+
+function resetHistoryState() {
+  _oldestLoadedAt = null;
+  _oldestLoadedId = null;
+  _newestLoadedAt = null;
+  _newestLoadedId = null;
+  _hasOlder = true;
+  _loadingOlder = false;
+  _seenMsgIds = new Set();
+  _wsQueue = [];
+  _chatReady = false;
+}
+
+// Новое сообщение имеет смысл рисовать, только если оно не старше уже
+// отрисованного новейшего. Раньше сравнение шло только по created_at, и два
+// сообщения, отправленные в одну миллисекунду, теряли одно из себя: метки
+// совпадали, проверка `timestamp > _newestLoadedAt` давала false, кадр уходил
+// в никуда. Поэтому метка сравнивается, а при равенстве — id.
+function isOlderThanLoaded(timestamp, id) {
+  if (_newestLoadedAt == null) return false;
+  if (timestamp < _newestLoadedAt) return true;
+  if (timestamp > _newestLoadedAt) return false;
+  if (!id || !_newestLoadedId) return false;
+  return id < _newestLoadedId;
+}
+
+// Расшифровываем страницу ДО отрисовки. Раньше это делалось после вставки в
+// DOM, и каждое зашифрованное сообщение на миг показывало «🔒 Encrypted
+// message», а потом подменялось текстом. Заодно ключ собеседника берётся один
+// раз на страницу, а не отдельным запросом на каждое сообщение.
+async function decryptPage(messages) {
+  const keys = {};
+  for (const m of messages) {
+    if (m.key_type !== 'e2ee_v1') continue;
+    if (_decryptedTexts[m.id]) continue;
+    let key;
+    if (m.user_id === Api.userId) {
+      // Своё сообщение: общий ключ с самим собой, расшифровываем своим же
+      // публичным ключом. Раньше такие сообщения просто пропускались, и после
+      // перезагрузки страницы висели с замком — кэш расшифровок живёт только
+      // в памяти. На новом устройстве ключ чужой, secretbox не откроется и
+      // останется прежний замок, то есть хуже не делаем.
+      key = CryptoE2EE.getPublicKey ? CryptoE2EE.getPublicKey() : null;
+    } else {
+      const uid = m.user_id;
+      if (!(uid in keys)) {
+        try {
+          const res = await fetch(`/users/${uid}/public-key`, { headers: Api._authHeaders() });
+          const data = res.ok ? await res.json() : {};
+          keys[uid] = data.publicKey || null;
+        } catch (_) {
+          keys[uid] = null;
+        }
+      }
+      key = keys[uid];
+    }
+    if (!key) continue;
+    try {
+      const plain = await CryptoE2EE.decryptMessage(m.text, key);
+      if (plain) _decryptedTexts[m.id] = plain;
+    } catch (_) { /* ключа нет — останется замок */ }
+  }
+}
+
+function showOlderSpinner(el) {
+  if (el.querySelector('.older-loading')) return;
+  const s = document.createElement('div');
+  s.className = 'older-loading loading-spinner';
+  s.style.margin = '12px auto';
+  el.insertBefore(s, el.firstChild);
+}
+
+function removeOlderSpinner(el) {
+  const s = el.querySelector('.older-loading');
+  if (s) s.remove();
+}
+
 async function loadMessages(chatId) {
+  const result = await Api.getChatMessages(chatId, MSG_PAGE);
+  // Пока летел ответ, пользователь мог открыть другой чат. Рисовать сообщения
+  // прежнего чата в текущем окне нельзя — это и было причиной «кривой» загрузки
+  // при быстром переключении.
+  if (currentChatId !== chatId) return;
   const el = document.getElementById('chatMessages');
-  const result = await Api.getChatMessages(chatId);
+  if (!el) return;
+
+  // Сервер отдаёт страницу по возрастанию времени, поэтому её края и есть
+  // границы курсора. Раньше младшую метку искали через Math.min по всей
+  // странице — при равных метках времени это давало произвольный id, и
+  // догрузка либо дублировала сообщения, либо теряла их.
+  const first = result.messages[0] || null;
+  const last = result.messages[result.messages.length - 1] || null;
+  _oldestLoadedAt = first ? first.created_at : null;
+  _oldestLoadedId = first ? first.id : null;
+  _newestLoadedAt = last ? last.created_at : null;
+  _newestLoadedId = last ? last.id : null;
+  _hasOlder = result.total
+    ? result.total > result.messages.length
+    : result.messages.length >= MSG_PAGE;
+
   if (result.error) {
     el.innerHTML = '<div class="empty-state" style="padding:40px 0;color:var(--text-muted)">Failed to load messages</div>';
+    // Без отрисованной страницы очередь кадров только растёт и никогда не
+    // показывается — ровно тот случай, когда она и накапливается по уму.
+    _wsQueue = [];
+    _chatReady = true;
     return;
   }
   if (result.messages.length === 0) {
     el.innerHTML = '<div class="empty-state" style="padding:40px 0;color:var(--text-muted)">No messages yet</div>';
+    // Кадр мог прийти ровно пока летел запрос. Раньше очередь здесь просто
+    // терялась, и сообщение не появлялось до перезагрузки страницы.
+    flushWsQueue();
     return;
   }
+
+  await decryptPage(result.messages);
+  if (currentChatId !== chatId) return;
+
   el.innerHTML = result.messages.map(m => renderMessage(m, currentChatType === 'group')).join('');
+  _seenMsgIds = new Set(result.messages.map(m => m.id).filter(Boolean));
   el.querySelectorAll('.msg-avatar img[data-src]').forEach(img => loadAvatarImage(img, img.dataset.src));
   scrollChat();
   result.messages.forEach(m => {
     if (m.user_id !== Api.userId) sendReadReceipt(m.id);
-    if (m.key_type === 'e2ee_v1') _decryptMsgId(m.id, m.text, m.user_id);
   });
   markChatRead(chatId);
+  flushWsQueue();
+  // Первая страница могла не заполнить контейнер. Тогда события скролла не
+  // будет вообще — догружать придётся вручную, то есть никак.
+  maybeLoadOlder();
+}
+
+// Кадры, пришедшие по WS пока грузилась первая страница. Показываем только
+// то, что действительно новее уже отрисованного: иначе серверная «доставка
+// офлайн-сообщений» дописывала бы в пустой чат всю историю от первого
+// сообщения, и страница потом затирала её последними 50.
+function flushWsQueue() {
+  _chatReady = true;
+  const queued = _wsQueue;
+  _wsQueue = [];
+  for (const data of queued) {
+    if (data.id && _seenMsgIds.has(data.id)) continue;
+    if (isOlderThanLoaded(data.timestamp, data.id)) continue;
+    addMessage({
+      id: data.id,
+      chat_id: data.chatId,
+      user_id: data.userId,
+      text: data.text,
+      file_id: data.fileId,
+      file_mime_type: data.file_mime_type,
+      created_at: data.timestamp,
+      username: data.username || currentChatName,
+      avatar_url: '',
+      status: 'sent',
+      reply: data.reply || null,
+      key_type: data.keyType,
+    }, currentChatType === 'group');
+  }
+}
+
+// Верхний элемент списка, дошедший до верхней границы контейнера. На него
+// вешается восстановление позиции: его offsetTop не меняется от того, что
+// выше появились новые сообщения, а scrollHeight контейнера — меняется.
+function firstVisibleAnchor(el) {
+  const top = el.scrollTop;
+  for (const node of el.children) {
+    if (node.offsetTop + node.offsetHeight > top) return node;
+  }
+  return el.firstElementChild;
+}
+
+// Возвращает якорь на то же место экрана после вставки сообщений выше него.
+function restoreAnchor(el, anchor, prevTop) {
+  if (!anchor || !anchor.isConnected) return;
+  el.scrollTop += anchor.offsetTop - prevTop;
+}
+
+// Картинки вставленных сообщений встают на место уже после восстановления
+// позиции и растут вверх от якоря, то есть уезжают с экрана. Пока они не
+// подгрузились, якорь держим на месте по их событиям загрузки.
+function stabilizeAnchor(el, anchor, prevTop) {
+  if (!anchor || !anchor.isConnected) return;
+  const scope = anchor.parentNode;
+  if (!scope) return;
+  scope.querySelectorAll('img').forEach(img => {
+    if (img.complete) return;
+    const once = () => {
+      restoreAnchor(el, anchor, prevTop);
+      img.removeEventListener('load', once);
+      img.removeEventListener('error', once);
+    };
+    img.addEventListener('load', once);
+    img.addEventListener('error', once);
+  });
+}
+
+// Одна страница истории. Возвращает, что вставили, — вызывающий сам решает,
+// тянуть ли дальше.
+async function loadOlderPage(chatId, el) {
+  showOlderSpinner(el);
+
+  // Замер якоря делаем до запроса: пока летела сеть и расшифровывались
+  // кадры, в список могли прийти новые сообщения по WS, и восстановление по
+  // scrollHeight уводило читателя на другое сообщение.
+  const anchor = firstVisibleAnchor(el);
+  const prevTop = anchor ? anchor.offsetTop : el.scrollTop;
+
+  const result = await Api.getChatMessages(chatId, MSG_PAGE, _oldestLoadedAt, _oldestLoadedId);
+  removeOlderSpinner(el);
+  if (currentChatId !== chatId || result.error) return 0;
+
+  const fresh = result.messages.filter(m => m.id && !_seenMsgIds.has(m.id));
+
+  if (fresh.length) {
+    await decryptPage(fresh);
+    if (currentChatId !== chatId) return 0;
+    el.insertAdjacentHTML('afterbegin', fresh.map(m => renderMessage(m, currentChatType === 'group')).join(''));
+    fresh.forEach(m => { if (m.id) _seenMsgIds.add(m.id); });
+    el.querySelectorAll('.msg-avatar img[data-src]').forEach(img => loadAvatarImage(img, img.dataset.src));
+    fresh.forEach(m => { if (m.user_id !== Api.userId) sendReadReceipt(m.id); });
+    // Удалённые сообщения тоже показываем: первая страница их рисует, а
+    // фильтр стоял только здесь, из-за чего в середине переписки зияли дыры.
+    restoreAnchor(el, anchor, prevTop);
+    stabilizeAnchor(el, anchor, prevTop);
+  }
+
+  const first = result.messages[0] || null;
+  if (first) {
+    _oldestLoadedAt = first.created_at;
+    _oldestLoadedId = first.id;
+  }
+  // Сколько всего осталось незагруженным, считаем по числу отрисованных:
+  // сервер отдаёт и удалённые сообщения, клиент их тоже рисует.
+  _hasOlder = result.total ? result.total > _seenMsgIds.size : result.messages.length >= MSG_PAGE;
+  return fresh.length;
+}
+
+// Доскроллили к началу — догружаем более старые страницы. Курсор по паре
+// (created_at, id), дедуп по id: сервер отдаёт строго до курсора, но WS мог
+// успеть прислать то же самое.
+async function loadOlderMessages() {
+  if (_loadingOlder || !_hasOlder || _oldestLoadedAt == null) return;
+  const chatId = currentChatId;
+  const el = document.getElementById('chatMessages');
+  if (!el || !chatId) return;
+
+  _loadingOlder = true;
+  try {
+    // Пока контейнер короче экрана, события скролла не будет — а значит не
+    // будет и следующей догрузки. Раньше на этом месте подгрузка молча
+    // вставала, и история обрывалась на первой странице.
+    for (let page = 0; page < AUTO_LOAD_CHAIN; page++) {
+      const viewportFull = el.scrollHeight > el.clientHeight + 8;
+      if (viewportFull && el.scrollTop >= 80) break;
+      if (!await loadOlderPage(chatId, el)) break;
+    }
+  } finally {
+    _loadingOlder = false;
+  }
+}
+
+// Точка входа догрузки: по событию скролла и сразу после первой страницы.
+function maybeLoadOlder() {
+  const el = document.getElementById('chatMessages');
+  if (!el || _loadingOlder || !_hasOlder || _chatReady !== true) return;
+  if (el.scrollTop < 80 || el.scrollHeight <= el.clientHeight + 8) loadOlderMessages();
 }
 
 function renderMessage(m, isGroup) {
@@ -1914,9 +2137,9 @@ function renderMessage(m, isGroup) {
     if (isKnownNonMedia) {
       mediaHtml = `<div class="msg-media msg-file"><a href="${fileUrl}" target="_blank" download>📎 ${escapeHtml(m.text || 'File')}</a></div>`;
     } else if (mime.startsWith('video/')) {
-      mediaHtml = `<div class="msg-media msg-video"><video src="${fileUrl}" data-file="${m.file_id}" controls preload="metadata" onclick="this.paused?this.play():this.pause()" onerror="this.onerror=null;loadMediaFile(this)" onloadedmetadata="scrollChat()"></video></div>`;
+      mediaHtml = `<div class="msg-media msg-video"><video src="${fileUrl}" data-file="${m.file_id}" controls preload="metadata" onclick="this.paused?this.play():this.pause()" onerror="this.onerror=null;loadMediaFile(this)" onloadedmetadata="scrollChatIfAtBottom()"></video></div>`;
     } else {
-      mediaHtml = `<div class="msg-media"><img src="${fileUrl}" data-file="${m.file_id}" alt="" loading="lazy" onclick="showImageViewer('${fileUrl}')" onerror="this.onerror=null;loadMediaFile(this)" onload="scrollChat()"></div>`;
+      mediaHtml = `<div class="msg-media"><img src="${fileUrl}" data-file="${m.file_id}" alt="" loading="lazy" onclick="showImageViewer('${fileUrl}')" onerror="this.onerror=null;loadMediaFile(this)" onload="scrollChatIfAtBottom()"></div>`;
     }
   }
 
@@ -1993,6 +2216,16 @@ async function loadMediaFile(el) {
 function scrollChat() {
   const el = document.getElementById('chatMessages');
   if (el) el.scrollTop = el.scrollHeight;
+}
+
+// Догрузилась картинка или видео. Раньше здесь стоял безусловный scrollChat(),
+// из-за чего нельзя было прочитать историю: каждая подгрузившаяся картинка
+// прыгала список вниз. Теперь держим низ только если пользователь и так был
+// внизу, то есть читал свежие сообщения.
+function scrollChatIfAtBottom() {
+  const el = document.getElementById('chatMessages');
+  if (!el) return;
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTop = el.scrollHeight;
 }
 
 function showMessageMenu(event, messageId, isMine) {
@@ -2104,6 +2337,19 @@ function scrollToMessage(messageId) {
 function addMessage(m, isGroup) {
   const el = document.getElementById('chatMessages');
   if (!el) return;
+  if (m.id) {
+    if (_seenMsgIds.has(m.id)) return;
+    _seenMsgIds.add(m.id);
+  }
+  // Новейшую метку двигаем только вперёд, иначе первое же вставленное
+  // сообщение обнулит ориентир для всех следующих проверок на устаревание.
+  if (m.created_at > (_newestLoadedAt || 0) || (_newestLoadedAt == null)) {
+    _newestLoadedAt = m.created_at;
+    _newestLoadedId = m.id || _newestLoadedId;
+  } else if (m.created_at === _newestLoadedAt && m.id && (!_newestLoadedId || m.id > _newestLoadedId)) {
+    _newestLoadedAt = m.created_at;
+    _newestLoadedId = m.id;
+  }
   const empty = el.querySelector('.empty-state');
   if (empty) el.innerHTML = '';
   el.insertAdjacentHTML('beforeend', renderMessage(m, isGroup));
@@ -2365,6 +2611,12 @@ function connectWs(chatId) {
         }
       }
 
+      // Субадмин запустил/закрыл опрос: poll.js слушает это событие и сразу
+      // перерисовывает блокировку, без ожидания перезагрузки страницы.
+      if (data.type === 'poll_changed') {
+        window.dispatchEvent(new CustomEvent('poll:changed'));
+      }
+
       if (data.type === 'connected' && data.userId) {
         CryptoE2EE.uploadPublicKey();
       }
@@ -2416,17 +2668,8 @@ function connectWs(chatId) {
           updateChatListLastMessage(data.chatId, data.keyType === 'e2ee_v1' ? '🔒 Encrypted' : (data.text || (data.fileId ? '📎 Media' : '')), data.timestamp, false);
           return;
         }
-        // Dedup: skip if message ID already in DOM
-        if (data.id) {
-          const el = document.getElementById('chatMessages');
-          if (el) {
-            let dup = false;
-            for (let i = 0; i < el.children.length; i++) {
-              if (el.children[i].dataset?.msgId === data.id) { dup = true; break; }
-            }
-            if (dup) return;
-          }
-        }
+        // Dedup: O(1) по набору отрисованных id
+        if (data.id && _seenMsgIds.has(data.id)) return;
         const msg = {
           id: data.id,
           chat_id: data.chatId,
@@ -2442,8 +2685,14 @@ function connectWs(chatId) {
           key_type: data.keyType,
         };
         if (data.chatId === currentChatId) {
-          addMessage(msg, currentChatType === 'group');
-          if (data.userId !== Api.userId) sendReadReceipt(data.id);
+          if (!_chatReady) {
+            // Первая страница ещё летит — копим, чтобы не выводить кадры
+            // в пустой контейнер. Превью в списке чатов обновляем сразу.
+            _wsQueue.push(data);
+          } else if (!isOlderThanLoaded(data.timestamp, data.id)) {
+            addMessage(msg, currentChatType === 'group');
+            if (data.userId !== Api.userId) sendReadReceipt(data.id);
+          }
         }
         const isFromOther = data.userId !== Api.userId && data.chatId !== currentChatId;
         updateChatListLastMessage(data.chatId, data.keyType === 'e2ee_v1' ? '🔒 Encrypted' : (msg.text || (data.fileId ? '📎 Media' : '')), data.timestamp, isFromOther);
@@ -2494,7 +2743,13 @@ function connectWs(chatId) {
     if (ws) ws.close();
   };
 
-  ws.onclose = () => {
+  ws.onclose = (ev) => {
+    // 1008 — сервер отказал в токене, это не обрыв связи: переподключение
+    // лишь будет снова бить в закрытую дверь, поэтому зовём перелогин.
+    if (ev && ev.code === 1008) {
+      if (window.Api && Api.expireSession) Api.expireSession();
+      return;
+    }
     if (reconnectTimer) clearTimeout(reconnectTimer);
     if (currentChatId) {
       reconnectTimer = setTimeout(() => connectWs(currentChatId), 3000);

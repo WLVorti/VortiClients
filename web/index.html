@@ -2,102 +2,134 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
   <title>VortiMes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="favicon.png">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/general_chat.css">
+  <link rel="stylesheet" href="css/poll.css">
+  <link rel="stylesheet" href="css/selfrealize.css">
 </head>
 <body>
   <div id="app">
     <div class="container">
       <div class="auth-card">
+
         <div class="logo">
-          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-            <rect width="40" height="40" rx="10" fill="#E53935"/>
-            <path d="M12 28V16l8 6-8 6zM20 28V16l8 6-8 6z" fill="white"/>
-          </svg>
+          <i aria-hidden="true">V</i>
           <h1>VortiMes</h1>
+          <span class="logo-x mono">мессенджер</span>
         </div>
 
         <div class="tabs">
-          <button class="tab active" data-tab="login">Войти</button>
-          <button class="tab" data-tab="register">Регистрация</button>
+          <button class="tab active" data-tab="login">вход</button>
+          <button class="tab" data-tab="register">регистрация</button>
         </div>
 
+        <!-- ============ ВХОД ============ -->
         <form id="loginForm" class="auth-form active">
-          <div class="field">
-            <label for="loginUsername">Имя пользователя</label>
+          <div class="kicker">уже есть аккаунт</div>
+
+          <div class="field" id="f-login-username">
+            <label for="loginUsername">имя пользователя</label>
             <input type="text" id="loginUsername" maxlength="32" placeholder="username" autocomplete="username">
-            <div class="field-error" id="loginUsernameError"></div>
+            <div class="field-error" id="loginUsernameError" style="display:none"></div>
           </div>
-          <div class="field">
-            <label for="loginPassword">Пароль</label>
+
+          <div class="field" id="f-login-password">
+            <label for="loginPassword">пароль</label>
             <div class="password-wrapper">
-              <input type="password" id="loginPassword" maxlength="128" placeholder="••••••••" autocomplete="current-password">
+              <input type="password" id="loginPassword" maxlength="128" placeholder="········" autocomplete="current-password">
               <button type="button" class="toggle-password" data-target="loginPassword" aria-label="Показать пароль">
-                <svg class="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path class="eye-open" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                  <circle class="eye-open" cx="12" cy="12" r="3"/>
-                  <path class="eye-closed" d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" style="display:none"/>
-                  <line class="eye-closed" x1="1" y1="1" x2="23" y2="23" style="display:none"/>
-                </svg>
+                <span class="eye-closed" style="display:inline">показать</span><span class="eye-open" style="display:none">скрыть</span>
               </button>
             </div>
-            <div class="field-error" id="loginPasswordError"></div>
+            <div class="field-error" id="loginPasswordError" style="display:none"></div>
           </div>
-          <div class="field-error general" id="loginError"></div>
-          <button type="submit" class="btn-primary">Войти</button>
+
+          <div class="field-error general" id="loginError" style="display:none"></div>
+          <button type="submit" class="btn-primary">войти</button>
+
+          <!-- вход через Google. Кнопка появляется только если сервер отдал
+               рабочий конфиг Firebase: GET /auth/google/config -> enabled. -->
+          <div class="auth-alt" id="googleBlock" hidden>
+            <span class="auth-alt-line" aria-hidden="true"></span>
+            <span class="auth-alt-label mono">или</span>
+            <span class="auth-alt-line" aria-hidden="true"></span>
+
+            <button type="button" class="btn-google" id="googleSignInBtn">
+              <svg class="btn-google-logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.17 7.09-10.32 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24s.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+              </svg>
+              <span class="btn-google-text">войти через Google</span>
+            </button>
+
+            <p class="auth-note" id="googleNote" style="display:none"></p>
+          </div>
         </form>
 
+        <!-- ============ РЕГИСТРАЦИЯ ============ -->
         <form id="registerForm" class="auth-form">
-          <div class="field">
-            <label for="regUsername">Имя пользователя</label>
+          <div class="kicker">новый аккаунт</div>
+
+          <div class="field" id="f-reg-username">
+            <label for="regUsername">имя пользователя</label>
             <input type="text" id="regUsername" maxlength="32" placeholder="username" autocomplete="username">
-            <div class="field-hint" id="regUsernameHint">3–32 символа, только буквы, цифры и _</div>
-            <div class="field-error" id="regUsernameError"></div>
+            <div class="f-note" id="regUsernameHint">
+              <span>латиница, цифры и _ · от 3 знаков</span>
+              <span class="ok" data-count>0/32</span>
+            </div>
+            <div class="field-error" id="regUsernameError" style="display:none"></div>
           </div>
-          <div class="field">
-            <label for="regPassword">Пароль</label>
+
+          <div class="field" id="f-reg-password">
+            <label for="regPassword">пароль</label>
             <div class="password-wrapper">
-              <input type="password" id="regPassword" maxlength="128" placeholder="••••••••" autocomplete="new-password">
+              <input type="password" id="regPassword" maxlength="128" placeholder="········" autocomplete="new-password">
               <button type="button" class="toggle-password" data-target="regPassword" aria-label="Показать пароль">
-                <svg class="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path class="eye-open" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                  <circle class="eye-open" cx="12" cy="12" r="3"/>
-                  <path class="eye-closed" d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" style="display:none"/>
-                  <line class="eye-closed" x1="1" y1="1" x2="23" y2="23" style="display:none"/>
-                </svg>
+                <span class="eye-closed" style="display:inline">показать</span><span class="eye-open" style="display:none">скрыть</span>
               </button>
             </div>
-            <div class="field-error" id="regPasswordError"></div>
+            <div class="field-error" id="regPasswordError" style="display:none"></div>
           </div>
 
           <div class="strength-bar-wrapper" id="strengthBar">
             <div class="strength-bar" id="strengthBarFill"></div>
           </div>
-          <div class="strength-label" id="strengthLabel"></div>
+          <div class="strength-label mono" id="strengthLabel"></div>
 
           <div class="requirements" id="requirements">
             <div class="req" data-req="length"><span class="req-icon">○</span> Минимум 8 символов</div>
             <div class="req" data-req="lowercase"><span class="req-icon">○</span> Строчная буква (a–z)</div>
             <div class="req" data-req="uppercase"><span class="req-icon">○</span> Заглавная буква (A–Z)</div>
             <div class="req" data-req="digit"><span class="req-icon">○</span> Цифра (0–9)</div>
-            <div class="req" data-req="special"><span class="req-icon">○</span> Спецсимвол (!@#$%^&*(),.?":{}|&lt;&gt;)</div>
+            <div class="req" data-req="special"><span class="req-icon">○</span> Спецсимвол (!@#$%^&amp;*(),.?":{}|&lt;&gt;)</div>
           </div>
 
-          <div class="field-error general" id="regError"></div>
-          <button type="submit" class="btn-primary">Регистрация</button>
+          <div class="field-error general" id="regError" style="display:none"></div>
+          <button type="submit" class="btn-primary">создать аккаунт</button>
         </form>
+
       </div>
     </div>
   </div>
 
   <script src="js/api.js"></script>
+<script src="js/session.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js"></script>
   <script src="js/crypto.js"></script>
   <script src="js/waterfall.js"></script>
+  <script src="js/selfrealize.js"></script>
   <script src="js/home.js"></script>
-  <script src="js/auth.js"></script>
+<script src="js/general_chat.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/poll.js"></script>
 </body>
 </html>

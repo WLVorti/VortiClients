@@ -1171,11 +1171,22 @@ class ApiService {
     final totalSize = await file.length();
 
     int sentBytes = 0;
+    int lastProgressMs = 0;
+    double lastProgress = 0.0;
+
     Stream<List<int>> countBytes() {
       return file.openRead().map((List<int> chunk) {
         sentBytes += chunk.length;
         if (onProgress != null && totalSize > 0) {
-          onProgress(sentBytes / totalSize);
+          final p = (sentBytes / totalSize).clamp(0.0, 1.0);
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          final deltaP = (p - lastProgress).abs();
+          final deltaT = nowMs - lastProgressMs;
+          if (p >= 1.0 || deltaP >= 0.01 || deltaT > 100) {
+            lastProgress = p;
+            lastProgressMs = nowMs;
+            onProgress(p);
+          }
         }
         return chunk;
       });

@@ -1,0 +1,700 @@
+/* СУБАДМИНКА /subadmin — панель управления опросами.
+   Палитра и шрифты берутся из style.css (подключён ради :root), все свои
+   классы с префиксом sa-, чтобы ничего не пересекалось с мессенджером.
+   Квадратная геометрия, лайм — только на главном действии. */
+
+/* author-стили вида .sa-login{display:grid} перебивают браузерное
+   [hidden]{display:none}, из-за чего скрытый экран продолжал отображаться:
+   после входа форма входа оставалась поверх панели. Поэтому атрибут hidden
+   принудительно отключаем для всех элементов. */
+[hidden] { display: none !important; }
+
+.sa-body {
+  display: block;
+  min-height: 100vh;
+  padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---------- вход ---------- */
+.sa-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.sa-login-card {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 28px 24px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.sa-back {
+  align-self: center;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 120ms ease;
+}
+.sa-back:hover { color: var(--primary); }
+
+/* ---------- шапка / бренд ---------- */
+.sa-brand { text-align: center; }
+.sa-brand--row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+.sa-brand-mark {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-family: var(--f-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+.sa-brand h1 {
+  font-family: var(--f-display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: var(--text);
+}
+.sa-brand-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sa-wrap {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sa-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 18px 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+.sa-topbar-actions { display: flex; gap: 8px; }
+
+.sa-hint {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border-left: 2px solid var(--accent-low);
+}
+.sa-hint b { color: var(--text-secondary); font-weight: 500; }
+
+.sa-hint-inline {
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ghost);
+}
+
+/* ---------- карточки ---------- */
+.sa-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.sa-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sa-card-title {
+  font-family: var(--f-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.sa-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+/* ---------- поля ---------- */
+.sa-field { display: flex; flex-direction: column; gap: 7px; }
+
+.sa-label {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sa-input {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 11px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--f-ui);
+  font-size: 15px;
+  line-height: 1.4;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+.sa-input::placeholder { color: var(--ghost); }
+.sa-input:hover { border-color: var(--ghost); }
+.sa-input:focus { border-color: var(--primary); }
+
+.sa-textarea { resize: vertical; min-height: 62px; }
+
+/* строка варианта ответа */
+.sa-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.sa-opt-num {
+  flex: none;
+  width: 22px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--ghost);
+  text-align: right;
+}
+.sa-opt-del {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.sa-opt-del:hover { color: var(--error); border-color: var(--hot-line); }
+.sa-opt-del:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* чекбокс */
+.sa-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  padding: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  transition: border-color 120ms ease;
+}
+.sa-check:hover { border-color: var(--ghost); }
+.sa-check input { position: absolute; opacity: 0; width: 0; height: 0; }
+.sa-check-box {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.sa-check input:checked + .sa-check-box {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.sa-check input:focus-visible + .sa-check-box {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.sa-check-text { font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
+.sa-check-text em {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  font-style: normal;
+  color: var(--text-muted);
+}
+
+/* ---------- кнопки ---------- */
+.sa-btn {
+  min-height: var(--tap);
+  padding: 11px 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--f-ui);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.sa-btn:hover { color: var(--text); border-color: var(--ghost); background: var(--surface-alt); }
+.sa-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.sa-btn:disabled { opacity: .45; cursor: default; }
+.sa-btn:disabled:hover { background: none; color: var(--text-secondary); border-color: var(--border); }
+
+.sa-btn--primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+  font-weight: 600;
+}
+.sa-btn--primary:hover { background: var(--text); border-color: var(--text); color: var(--bg); }
+.sa-btn--primary:disabled:hover { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+
+.sa-btn--danger { color: var(--error); border-color: var(--hot-line); }
+.sa-btn--danger:hover { background: var(--error); border-color: var(--error); color: var(--bg); }
+
+.sa-btn--wide { width: 100%; }
+.sa-btn--sm { min-height: 36px; padding: 8px 12px; font-size: 11px; }
+
+/* ---------- сообщения ---------- */
+.sa-msg {
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  border: 1px solid var(--hot-line);
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.sa-empty {
+  padding: 30px 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* ---------- статистика ---------- */
+.sa-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sa-stat {
+  flex: 1 1 120px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+}
+.sa-stat b {
+  display: block;
+  font-family: var(--f-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+}
+.sa-stat span {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ---------- опрос в списке ---------- */
+.sa-poll {
+  padding: 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+}
+.sa-poll + .sa-poll { margin-top: 10px; }
+.sa-poll.is-active { border-color: var(--primary); }
+
+.sa-poll-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.sa-poll-q {
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text);
+  word-break: break-word;
+}
+.sa-poll-meta {
+  margin-top: 5px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  color: var(--text-muted);
+}
+
+.sa-badge {
+  flex: none;
+  padding: 4px 8px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.sa-badge--active { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.sa-badge--queued { background: var(--primary-dim); border-color: var(--accent-low); color: var(--primary); }
+.sa-badge--draft { background: var(--surface-alt); }
+
+/* варианты и результаты */
+.sa-opts { display: flex; flex-direction: column; gap: 6px; }
+.sa-optline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.sa-optline-label { flex: 1; min-width: 0; word-break: break-word; }
+.sa-optline-num {
+  flex: none;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 38px;
+  text-align: right;
+}
+.sa-optline.is-custom .sa-optline-label { font-style: italic; color: var(--text-muted); }
+
+.sa-bar {
+  flex: none;
+  width: 90px;
+  height: 6px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+.sa-bar span { display: block; height: 100%; background: var(--primary); }
+
+.sa-custom {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.sa-custom-title {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.sa-poll-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.sa-votes {
+  margin-top: 10px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+.sa-vote {
+  display: flex;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--line-soft);
+}
+.sa-vote time {
+  flex: none;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--ghost);
+}
+
+/* ---------- тост ---------- */
+.sa-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  z-index: 300;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--primary);
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .5);
+}
+.sa-toast.is-error { border-color: var(--error); }
+
+@media (max-width: 560px) {
+  .sa-card { padding: 16px 14px; }
+  .sa-topbar { padding-top: calc(14px + env(safe-area-inset-top, 0px)); }
+  .sa-poll-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .sa-optline { flex-wrap: wrap; }
+  .sa-bar { width: 100%; order: 3; }
+  .sa-optline-num { order: 2; }
+}
+
+/* ---------- модерация сообщений общего чата ---------- */
+.sa-bulkbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.sa-bulkbar-count {
+  font-family: var(--f-mono, monospace);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+
+.sa-msgrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sa-msgrow:last-child { border-bottom: 0; }
+.sa-msgrow.is-checked { background: rgba(194, 224, 77, .06); }
+.sa-msgrow.is-removed { opacity: .5; }
+
+.sa-msgrow-check {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--primary, #c2e04d);
+  cursor: pointer;
+}
+
+.sa-msgrow-body { flex: 1 1 auto; min-width: 0; }
+
+.sa-msgrow-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.sa-msgrow-author {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.sa-msgrow-time {
+  font-family: var(--f-mono, monospace);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.sa-msgrow-text {
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sa-msgrow.is-removed .sa-msgrow-text {
+  font-family: var(--f-mono, monospace);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ---------- новости площадки ---------- */
+.sa-md-editor {
+  min-height: 220px;
+  font-family: var(--f-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+}
+.sa-md-editor::placeholder { color: var(--ghost); }
+
+.sa-file {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.sa-file::file-selector-button {
+  margin-right: 10px;
+  padding: 7px 12px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--f-ui);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.sa-file::file-selector-button:hover { color: var(--text); border-color: var(--ghost); }
+
+.sa-news-media-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sa-news-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+.sa-news-files:empty { display: none; }
+
+.sa-news-file {
+  position: relative;
+  width: 104px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+}
+.sa-news-file-thumb {
+  width: 100%;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #000;
+}
+.sa-news-file-thumb img,
+.sa-news-file-thumb video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.sa-news-file-name {
+  padding: 5px 6px;
+  font-family: var(--f-mono);
+  font-size: 9px;
+  line-height: 1.3;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  /* Два имени в одну строку не влезают — показываем начало и многоточие. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sa-news-file .sa-opt-del {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 24px;
+  height: 24px;
+  background: rgba(0, 0, 0, .6);
+  border-color: transparent;
+  font-size: 15px;
+}
+
+.sa-news-preview {
+  padding: 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+}
+.sa-news-preview[hidden] { display: none; }
+.sa-news-preview .sa-label { display: block; margin-bottom: 10px; }
+/* Границы вложений в предпросмотре дублировали бы рамку карточки. */
+.sa-news-preview .md img,
+.sa-news-preview .md video { border-color: var(--border); }
+
+.sa-newsitem {
+  padding: 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+}
+.sa-newsitem + .sa-newsitem { margin-top: 10px; }
+/* Черновик — приглушённая рамка: видно, что новость ещё не на сайте. */
+.sa-newsitem.is-draft { border-style: dashed; }
+
+.sa-newsitem-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.sa-newsitem-title {
+  font-family: var(--f-display);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+  word-break: break-word;
+}
+.sa-newsitem-meta {
+  margin-top: 4px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+}
+.sa-newsitem-text {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .sa-news-media-row { flex-direction: column; align-items: stretch; }
+  .sa-news-file { width: 88px; }
+  .sa-news-file-thumb { height: 62px; }
+}

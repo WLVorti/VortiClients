@@ -1,0 +1,212 @@
+/* ============================================================
+   MARKDAP-РАЗМЕТКА НОВОСТЕЙ.
+
+   Общий стиль для web/js/markdown.js: используется и в публичной ленте
+   площадки (/selfrealize), и в предпросмотре субадминки. Классы .md*
+   появляются только там, где текст прошёл через Markdown.render(),
+   поэтому правила не задевают остальной сайт.
+
+   Палитра и шрифты — из style.css. Текст новости: те же шрифты, что у
+   обычного текста, но с чуть большим межстрочным интервалом: в новости
+   читают абзацы, а не короткие реплики.
+   ============================================================ */
+
+.md {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- абзацы ---------- */
+.md .md-p {
+  margin: 0 0 12px;
+}
+.md .md-p:last-child { margin-bottom: 0; }
+
+/* ---------- заголовки ---------- */
+.md .md-h {
+  margin: 20px 0 8px;
+  font-family: var(--f-ui);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text);
+}
+.md > .md-h:first-child { margin-top: 0; }
+
+.md h1.md-h { font-family: var(--f-display); font-size: 20px; }
+.md h2.md-h { font-family: var(--f-display); font-size: 17px; }
+.md h3.md-h { font-size: 16px; }
+.md h4.md-h { font-size: 15px; }
+.md h5.md-h,
+.md h6.md-h {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-secondary);
+}
+
+/* ---------- списки ---------- */
+.md ul,
+.md ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+.md li { margin: 3px 0; }
+.md li > ul,
+.md li > ol { margin: 3px 0 0; }
+
+.md ul { list-style: none; padding-left: 20px; }
+.md ul > li { position: relative; }
+.md ul > li::before {
+  content: "";
+  position: absolute;
+  left: -13px;
+  top: .62em;
+  width: 5px;
+  height: 5px;
+  background: var(--primary);
+}
+.md ol { list-style: decimal; }
+
+/* Задачи: квадратная галочка, как в остальном интерфейсе. */
+.md .md-check {
+  width: 15px;
+  height: 15px;
+  margin: 0 7px 0 0;
+  vertical-align: -2px;
+  accent-color: var(--primary);
+  pointer-events: none;
+}
+
+/* ---------- цитаты и разделители ---------- */
+.md .md-quote {
+  margin: 0 0 12px;
+  padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--accent-line);
+  color: var(--text-secondary);
+}
+.md .md-quote .md-p:last-child { margin-bottom: 0; }
+
+.md .md-hr {
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- выноски (callout) ----------
+   Тип пишется в класс (md-callout--note/warning/danger/tip), а текста-заголовка
+   в разметке нет: подпись типа даёт псевдоэлемент, иначе автору пришлось бы
+   дублировать его и в тексте, и в разметке. */
+.md .md-callout {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-left: 2px solid var(--accent-line);
+  background: color-mix(in srgb, var(--accent-line) 45%, transparent);
+}
+.md .md-callout::before {
+  content: attr(data-type);
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.md .md-callout > :last-child { margin-bottom: 0; }
+
+.md .md-callout--note { border-left-color: var(--primary); }
+.md .md-callout--note::before { content: "Заметка"; }
+
+.md .md-callout--tip { border-left-color: #2f9e63; }
+.md .md-callout--tip::before { content: "Совет"; }
+
+.md .md-callout--warning { border-left-color: var(--warning, #f5a524); }
+.md .md-callout--warning::before { content: "Внимание"; color: var(--warning, #f5a524); }
+
+.md .md-callout--danger { border-left-color: var(--danger, #e5484d); }
+.md .md-callout--danger::before { content: "Важно"; color: var(--danger, #e5484d); }
+
+/* ---------- код ---------- */
+.md code {
+  padding: 2px 5px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  font-family: var(--f-mono);
+  font-size: .88em;
+  color: var(--text);
+}
+.md .md-pre {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  background: var(--surface-alt);
+  border-left: 2px solid var(--accent-line);
+  overflow-x: auto;
+}
+.md .md-pre code {
+  padding: 0;
+  background: none;
+  border: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+/* ---------- выделение и ссылки ---------- */
+.md mark {
+  padding: 0 2px;
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  color: var(--text);
+}
+.md del { color: var(--text-muted); }
+
+.md a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md a:hover { color: var(--text); }
+
+/* ---------- таблицы ---------- */
+.md-table-wrap {
+  margin: 0 0 12px;
+  overflow-x: auto;
+}
+.md .md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.md .md-table th,
+.md .md-table td {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.md .md-table th {
+  background: var(--surface-alt);
+  font-family: var(--f-ui);
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.md .md-table td { color: var(--text-secondary); }
+
+/* ---------- картинки внутри текста ---------- */
+.md img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+}
+.md .md-figure { margin: 0 0 12px; }
+.md .md-figure figcaption {
+  margin-top: 6px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ghost);
+}

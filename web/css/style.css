@@ -1,20 +1,42 @@
+/* stylEx: палитра, шрифты, ноль радиусов. Контраст к --bg (AA = 4.5:1):
+   text 16.4 · secondary 7.6 · muted 4.8 · primary 13.4 · error 6.5
+   Лайм — только в двух местах: главная кнопка и успешное подтверждение. */
 :root {
-  --bg: #0D0A0F;
-  --surface: #1A1218;
-  --surface-alt: #241A22;
-  --primary: #E53935;
-  --primary-hover: #C62828;
-  --primary-dim: color-mix(in srgb, var(--primary) 15%, transparent);
-  --text: #F0F0F0;
-  --text-secondary: #9E9E9E;
-  --text-muted: #6B6B6B;
-  --border: #3A2A35;
-  --error: #EF5350;
-  --error-bg: color-mix(in srgb, var(--error) 12%, var(--bg));
-  --success: #43a047;
-  --success-dim: color-mix(in srgb, var(--success) 12%, var(--bg));
-  --strength-0: #3A2A35;
+  /* ПАЛИТРА */
+  --bg: #08090a;          /* фон страницы */
+  --surface: #101315;     /* панель */
+  --surface-alt: #171b1f; /* приподнятое: вкладки, карточки настроек */
+  --bg-2: #0c0e10;        /* «колодец»: вложенные блоки, демо-боксы */
+  --primary: #c2e04d;     /* лайм — главная кнопка и активные состояния */
+  --primary-hover: #e8eae5; /* на ховере фон светлеет до самого текста */
+  --text: #e8eae5;
+  --text-secondary: #9aa1aa;
+  --text-muted: #7b818a;
+  --border: #23272c;
+  --error: #ff5c2a;       /* ошибка — и только она */
+  --success: #a9cc3a;
+
+  /* производные */
+  --on-primary: #0a0b0c;  /* текст на лайме: почти чёрный, не белый */
+  --ghost: #5a616a;
+  --line-soft: #171b1f;
+  --accent-low: #37401f;  /* тёмная лаймовая линия: рамки */
+  --accent-line: #37401f; /* подложка под плашки успеха */
+  --hot-line: #53291a;
+
+  /* ШРИФТЫ */
+  --f-display: "Unbounded", "Trebuchet MS", Verdana, sans-serif;
+  --f-ui: "Golos Text", "Trebuchet MS", Verdana, sans-serif;
+  --f-mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+
+  --primary-dim: color-mix(in srgb, var(--primary) 12%, transparent);
+  --error-bg: color-mix(in srgb, var(--error) 6%, var(--bg));
+  --success-dim: color-mix(in srgb, var(--success) 10%, var(--bg));
+  --strength-0: #23272c;
   --nav-height: 64px;
+  --tap: 44px;            /* минимальная высота цели, в т.ч. на телефоне */
+
+  color-scheme: dark;
 }
 
 * {
@@ -24,13 +46,14 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(--f-ui);
   background: var(--bg);
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
 #app {
@@ -41,261 +64,360 @@ body {
   justify-content: center;
 }
 
-/* ===== AUTH SCREEN ===== */
+/* ===== AUTH SCREEN (stylEx) =====
+   Лайм — только в двух местах: главная кнопка и успешное подтверждение.
+   Ошибка — --error, и только она. Поля без рамки: снизу линия, рамка
+   появляется на фокусе. Радиуса нет. */
+
+#app { align-items: flex-start; }
+
 .container {
   width: 100%;
-  max-width: 400px;
-  padding: 20px;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 44px 24px 56px;
 }
 
 .auth-card {
-  background: var(--surface);
-  border-radius: 16px;
-  padding: 32px 28px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
 }
 
+/* ---------- шапка ---------- */
 .logo {
   display: flex;
   align-items: center;
-  gap: 12px;
-  justify-content: center;
-  margin-bottom: 28px;
+  gap: 9px;
+  min-height: var(--tap);
+  margin-bottom: 40px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
 }
-
+.logo i {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-family: var(--f-display);
+  font-size: 12px;
+  font-weight: 700;
+  font-style: normal;
+}
 .logo h1 {
-  font-size: 24px;
-  font-weight: 600;
+  font-family: var(--f-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -.01em;
   color: var(--text);
 }
+.logo .logo-x {
+  margin-left: auto;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ghost);
+}
 
+/* ---------- переключатель вход / регистрация ---------- */
 .tabs {
   display: flex;
-  gap: 0;
-  margin-bottom: 24px;
-  background: var(--surface-alt);
-  border-radius: 10px;
-  padding: 4px;
+  gap: 18px;
+  margin-bottom: 34px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--border);
 }
-
 .tab {
-  flex: 1;
-  border: none;
-  background: transparent;
-  padding: 10px;
-  border-radius: 8px;
-  font-size: 14px;
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 0 0 12px;
+  margin-bottom: -1px;
+  border-bottom: 1px solid transparent;
+  font-family: var(--f-ui);
+  font-size: 12px;
   font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: color 120ms ease, border-color 120ms ease;
 }
-
+.tab:hover { color: var(--text-secondary); }
 .tab.active {
-  background: var(--surface);
   color: var(--text);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  border-bottom-color: var(--primary);
+}
+.tab:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+
+/* ---------- заголовок формы ---------- */
+.kicker {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ghost);
+  margin-bottom: 12px;
 }
 
-.auth-form {
-  display: none;
-  flex-direction: column;
-  gap: 16px;
-}
+.auth-form { display: none; }
+.auth-form.active { display: block; }
 
-.auth-form.active {
-  display: flex;
-}
+/* ---------- поля ----------
+   Без рамки: снизу линия. Рамка появляется на фокусе и на ошибке. */
+.field { margin-bottom: 22px; }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field label {
-  font-size: 13px;
+.field > label {
+  display: block;
+  margin-bottom: 7px;
+  font-family: var(--f-ui);
+  font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.field input {
-  width: 100%;
-  padding: 12px 14px;
-  border: 1.5px solid var(--border);
-  border-radius: 10px;
-  font-size: 15px;
-  outline: none;
-  transition: border-color 0.2s, background 0.2s;
-  background: var(--surface-alt);
-  color: var(--text);
-}
-
-.field input:focus {
-  border-color: var(--primary);
-  background: var(--surface);
-}
-
-.field input.error {
-  border-color: var(--error);
-}
-
-.field input.valid {
-  border-color: var(--success);
-}
-
-.field input::placeholder {
+  letter-spacing: .08em;
+  text-transform: uppercase;
   color: var(--text-muted);
+  transition: color 120ms ease;
 }
 
-.password-wrapper {
-  position: relative;
+.field input[type="text"],
+.field input[type="password"],
+.field input[type="email"] {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 10px 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--f-ui);
+  font-size: 16px;
+  outline: none;
+  transition: border-color 120ms ease;
 }
+.field input::placeholder { color: var(--ghost); }
+.field input:hover { border-bottom-color: var(--ghost); }
+.field input:focus { border-bottom-color: var(--text); }
+.field input:focus-visible { outline: 0; }
+.field input:focus + .toggle-password { color: var(--text-secondary); }
 
-.password-wrapper input {
-  padding-right: 44px;
+/* состояния, которые ставит auth.js */
+.field input.error { border-bottom-color: var(--error); }
+.field input.valid {
+  border-bottom-color: var(--primary);
+  background: color-mix(in srgb, var(--accent-line) 40%, transparent);
 }
+.field:has(input.error) > label { color: var(--error); }
+
+/* пароль с кнопкой «показать»: по высоте равна полю, не строке подписи */
+.password-wrapper { position: relative; }
+.password-wrapper input { padding-right: 96px !important; }
 
 .toggle-password {
   position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
+  right: 0;
+  top: 0;
+  bottom: 0;
+  min-width: 88px;
+  min-height: var(--tap);
+  padding: 0 10px;
   background: none;
-  border: none;
-  padding: 6px;
+  border: 0;
+  color: var(--text-muted);
+  font-family: var(--f-ui);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
   cursor: pointer;
-  color: var(--text-muted);
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s, background 0.2s;
+  transition: color 120ms ease;
 }
+.toggle-password:hover { color: var(--text); }
+.toggle-password:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 
-.toggle-password:hover {
-  color: var(--text-secondary);
-  background: var(--surface-alt);
-}
-
+/* подпись поля: подсказка слева, счётчик справа. Обе моно и мелкие. */
+.f-note,
 .field-hint {
-  font-size: 12px;
-  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 7px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--ghost);
 }
+.f-note .ok { color: var(--text-secondary); }
 
+/* ошибка поля — единственное место, где появляется --error.
+   display НЕ задаётся none: auth.js управляет им через inline-style. */
 .field-error {
-  font-size: 12px;
-  color: var(--error);
-  min-height: 0;
-  line-height: 1.3;
-}
-
-.field-error.general {
-  text-align: center;
-  padding: 8px 12px;
-  background: var(--error-bg);
-  border-radius: 8px;
+  display: block;
+  margin-top: 7px;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.45;
+  color: var(--error);
+}
+.field-error.general {
+  margin: 0 0 18px;
+  padding: 13px 15px;
+  border: 1px solid var(--hot-line);
+  background: color-mix(in srgb, var(--error) 5%, transparent);
   white-space: pre-line;
 }
 
-.strength-bar-wrapper {
-  height: 4px;
-  background: var(--strength-0);
-  border-radius: 2px;
-  overflow: hidden;
+/* успех: подложка — тёмно-фиолетовая, рамка и метка — маджента */
+.note-good {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin: 0 0 18px;
+  padding: 13px 15px;
+  border: 1px solid var(--accent-line);
+  background: color-mix(in srgb, var(--accent-line) 45%, transparent);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-secondary);
 }
+.note-good i {
+  font-style: normal;
+  flex: none;
+  padding-top: 3px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+.note-good b { color: var(--text); font-weight: 600; }
 
+/* ---------- надёжность пароля ---------- */
+.strength-bar-wrapper {
+  height: 2px;
+  background: var(--line-soft);
+  overflow: hidden;
+  margin: 0 0 6px;
+}
 .strength-bar {
   height: 100%;
-  width: 0%;
-  border-radius: 2px;
-  transition: width 0.3s, background 0.3s;
+  width: 0;
+  background: var(--border);
+  transition: width 140ms ease, background 140ms ease;
 }
-
 .strength-label {
-  font-size: 12px;
-  color: var(--text-muted);
   min-height: 16px;
-}
-
-.requirements {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px;
-  background: var(--surface-alt);
-  border-radius: 10px;
-  border: 1px solid var(--border);
-}
-
-.req {
-  font-size: 13px;
+  margin-bottom: 16px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
   color: var(--text-muted);
+  text-align: right;
+}
+
+/* ---------- список требований ---------- */
+.requirements {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.req {
   display: flex;
   align-items: center;
-  gap: 8px;
-  transition: color 0.2s;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  transition: color 120ms ease;
 }
+.req.met { color: var(--text-secondary); }
 
+/* глифы ●/○ из auth.js скрыты — рисуем свой квадрат, как .chk в stylEx */
 .req .req-icon {
-  font-size: 16px;
-  line-height: 1;
+  position: relative;
   width: 16px;
-  text-align: center;
-  transition: color 0.2s;
+  height: 16px;
+  flex: none;
+  border: 1px solid var(--accent-low);
+  font-size: 0;
+  color: transparent;
+  transition: background 120ms ease, border-color 120ms ease;
 }
-
-.req.met {
-  color: var(--success);
-}
-
+.req:not(.met) .req-icon:hover { border-color: var(--primary); }
 .req.met .req-icon {
-  color: var(--success);
-}
-
-.btn-primary {
-  width: 100%;
-  padding: 13px;
   background: var(--primary);
-  color: #fff;
-  border: none;
-  border-radius: 10px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s, opacity 0.2s;
+  border-color: var(--primary);
+}
+.req.met .req-icon::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 4px;
+  height: 9px;
+  border: solid var(--on-primary);
+  border-width: 0 2px 2px 0;
+  transform: rotate(43deg);
 }
 
+/* ---------- кнопки ----------
+   Лайм — главная кнопка экрана. Вторая всегда спокойная. */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 10px 16px;
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 0;
+  color: var(--on-primary);
+  font-family: var(--f-ui);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
 .btn-primary:hover {
   background: var(--primary-hover);
+  color: var(--bg);
 }
-
+.btn-primary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .btn-primary:disabled {
-  opacity: 0.5;
+  opacity: .35;
   cursor: not-allowed;
 }
-
 .btn-primary:disabled:hover {
   background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
 }
-
 .btn-primary.loading {
   position: relative;
   color: transparent;
 }
-
 .btn-primary.loading::after {
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 20px;
-  height: 20px;
-  margin: -10px 0 0 -10px;
-  border: 2.5px solid rgba(255,255,255,0.3);
-  border-top-color: #fff;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2.5px solid color-mix(in srgb, var(--on-primary) 30%, transparent);
+  border-top-color: var(--on-primary);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
@@ -304,6 +426,9 @@ body {
   to { transform: rotate(360deg); }
 }
 
+@media (max-width: 560px) {
+  .container { padding: 28px 18px 40px; }
+}
 /* ===== WATERFALL BACKGROUND ===== */
 .wf-container {
   position: fixed;
@@ -570,7 +695,7 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   padding: 6px;
-  border-radius: 8px;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -597,7 +722,7 @@ body {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  border-radius: 12px;
+  border-radius: 0;
   cursor: pointer;
   transition: background 0.15s;
   position: relative;
@@ -607,7 +732,7 @@ body {
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--surface);
   opacity: 0.6;
   mask-image: linear-gradient(to right, black 0%, rgba(0,0,0,0.25) 50%, transparent 100%);
@@ -702,11 +827,11 @@ body {
 
 .unread-badge {
   background: var(--primary);
-  color: #fff;
+  color: var(--on-primary);
   font-size: 11px;
   font-weight: 600;
   padding: 1px 7px;
-  border-radius: 10px;
+  border-radius: 0;
   white-space: nowrap;
 }
 
@@ -719,7 +844,7 @@ body {
   height: 56px;
   border-radius: 50%;
   background: var(--primary);
-  color: #fff;
+  color: var(--on-primary);
   border: none;
   cursor: pointer;
   display: flex;
@@ -739,6 +864,7 @@ body {
 
 .fab:hover {
   background: var(--primary-hover);
+  color: var(--bg);
   transform: scale(1.05);
 }
 
@@ -886,6 +1012,7 @@ body {
 }
 .avatar-remove-btn:hover {
   background: var(--primary-hover);
+  color: var(--bg);
 }
 
 .profile-username {
@@ -900,7 +1027,7 @@ body {
   flex-direction: column;
   gap: 0;
   background: var(--surface);
-  border-radius: 14px;
+  border-radius: 0;
   overflow: hidden;
   border: 1px solid var(--border);
 }
@@ -940,7 +1067,7 @@ body {
 .field-input {
   background: var(--bg);
   border: 1.5px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
   padding: 12px 14px;
   font-size: 16px;
   color: var(--text);
@@ -967,7 +1094,7 @@ body {
   align-items: center;
   gap: 6px;
   padding: 12px 32px;
-  border-radius: 10px;
+  border-radius: 0;
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
@@ -985,10 +1112,11 @@ body {
 }
 .btn-save {
   background: var(--primary);
-  color: #fff;
+  color: var(--on-primary);
 }
 .btn-save:hover {
   background: var(--primary-hover);
+  color: var(--bg);
 }
 .btn-cancel {
   background: var(--surface-alt);
@@ -1002,7 +1130,7 @@ body {
   width: 100%;
   margin-top: 24px;
   background: var(--surface);
-  border-radius: 14px;
+  border-radius: 0;
   overflow: hidden;
   border: 1px solid var(--border);
 }
@@ -1054,7 +1182,7 @@ body {
   gap: 12px;
   padding: 14px 16px;
   background: var(--surface);
-  border-radius: 12px;
+  border-radius: 0;
   border: 1px solid var(--border);
 }
 .account-item.account-current {
@@ -1097,14 +1225,14 @@ body {
   border: none;
   color: var(--text-secondary);
   padding: 8px 16px;
-  border-radius: 8px;
+  border-radius: 0;
   cursor: pointer;
   font-size: 14px;
   transition: background 0.15s, color 0.15s;
 }
 .account-item-switch:hover {
   background: var(--primary);
-  color: #fff;
+  color: var(--on-primary);
 }
 .account-item-remove {
   background: none;
@@ -1114,7 +1242,7 @@ body {
   cursor: pointer;
   padding: 4px;
   line-height: 1;
-  border-radius: 6px;
+  border-radius: 0;
   transition: color 0.15s, background 0.15s;
 }
 .account-item-remove:hover {
@@ -1130,7 +1258,7 @@ body {
   padding: 10px 12px;
   background: var(--surface);
   border: 1px dashed var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 14px;
@@ -1156,7 +1284,7 @@ body {
 
 .dialog {
   background: var(--surface);
-  border-radius: 16px;
+  border-radius: 0;
   padding: 24px;
   max-width: 340px;
   width: 100%;
@@ -1188,7 +1316,7 @@ body {
   color: var(--text);
   border: none;
   padding: 10px 20px;
-  border-radius: 10px;
+  border-radius: 0;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -1202,7 +1330,7 @@ body {
 /* Bottom Sheet */
 .sheet {
   background: var(--surface);
-  border-radius: 16px 16px 0 0;
+  border-radius: 0;
   max-height: 80vh;
   width: 100%;
   max-width: 480px;
@@ -1247,7 +1375,7 @@ body {
   width: 100%;
   padding: 12px 14px;
   border: 1.5px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
   font-size: 15px;
   outline: none;
   background: var(--surface-alt);
@@ -1314,7 +1442,7 @@ body {
   color: var(--text-muted);
 }
 .chat-header-status.status-online {
-  color: #4caf50;
+  color: var(--success);
 }
 .chat-header-status.status-offline {
   color: var(--text-muted);
@@ -1397,7 +1525,7 @@ body {
 .msg-bubble {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   padding: 8px 12px;
   max-width: 100%;
   word-wrap: break-word;
@@ -1414,7 +1542,7 @@ body {
   word-break: break-word;
 }
 .msg-mine .msg-text {
-  color: #fff;
+  color: var(--on-primary);
 }
 .msg-meta {
   display: flex;
@@ -1463,7 +1591,7 @@ body {
   bottom: 6px;
   width: 3px;
   background: var(--primary);
-  border-radius: 2px;
+  border-radius: 0;
   z-index: 1;
 }
 
@@ -1485,7 +1613,7 @@ body {
   bottom: 6px;
   width: 3px;
   background: var(--primary);
-  border-radius: 2px;
+  border-radius: 0;
   z-index: 1;
 }
 .media-preview-info {
@@ -1499,7 +1627,7 @@ body {
   width: 40px;
   height: 40px;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 0;
   border: 1px solid rgba(255,255,255,0.1);
 }
 .media-preview-name {
@@ -1544,7 +1672,7 @@ body {
   padding: 6px 10px;
   margin-bottom: 6px;
   background: rgba(255,255,255,0.06);
-  border-radius: 8px;
+  border-radius: 0;
   border-left: 3px solid var(--primary);
   cursor: pointer;
   font-size: 13px;
@@ -1595,7 +1723,7 @@ body {
   cursor: pointer;
   padding: 2px 4px;
   line-height: 1;
-  border-radius: 6px;
+  border-radius: 0;
   opacity: 0;
   transition: opacity 0.15s, background 0.15s;
   align-self: flex-end;
@@ -1614,7 +1742,7 @@ body {
   z-index: 2000;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   padding: 4px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.4);
   min-width: 120px;
@@ -1630,7 +1758,7 @@ body {
   text-align: left;
   font-size: 14px;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 0;
   transition: background 0.1s;
   font-family: inherit;
 }
@@ -1668,7 +1796,7 @@ body {
 .chat-input-wrap {
   flex: 1;
   background: var(--bg);
-  border-radius: 20px;
+  border-radius: 0;
   border: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -1713,7 +1841,7 @@ body {
   border-radius: 50%;
   border: none;
   background: var(--primary);
-  color: #fff;
+  color: var(--on-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1723,6 +1851,7 @@ body {
 }
 .send-btn:hover {
   background: var(--primary-hover);
+  color: var(--bg);
 }
 .send-btn:active {
   transform: scale(.95);
@@ -1737,7 +1866,7 @@ body {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  border-radius: 12px;
+  border-radius: 0;
   cursor: pointer;
   transition: background 0.15s;
   background: var(--surface);
@@ -1760,7 +1889,7 @@ body {
   background: var(--surface);
   color: var(--text);
   padding: 12px 24px;
-  border-radius: 12px;
+  border-radius: 0;
   font-size: 14px;
   z-index: 1000;
   opacity: 0;
@@ -1779,7 +1908,7 @@ body {
 @media (max-width: 480px) {
   .auth-card {
     padding: 24px 20px;
-    border-radius: 12px;
+    border-radius: 0;
   }
   .container {
     padding: 12px;
@@ -1807,7 +1936,7 @@ body {
 .msg-media {
   margin: -8px -12px 6px;
   overflow: hidden;
-  border-radius: 8px 8px 0 0;
+  border-radius: 0;
 }
 .msg-media img {
   width: 100%;
@@ -1838,7 +1967,7 @@ body {
 /* Overlay content / sheet */
 .overlay-content {
   background: var(--surface);
-  border-radius: 16px;
+  border-radius: 0;
   max-height: 85vh;
   width: 100%;
   max-width: 420px;
@@ -1919,7 +2048,7 @@ body {
   font-size: 13px;
   font-weight: 600;
   padding: 4px 10px;
-  border-radius: 20px;
+  border-radius: 0;
   cursor: pointer;
   position: relative;
   flex-wrap: wrap;
@@ -1969,7 +2098,7 @@ body {
   width: 100%;
   padding: 12px 14px;
   border: 1.5px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
   font-size: 15px;
   outline: none;
   background: var(--surface-alt);
@@ -1996,7 +2125,7 @@ body {
   background: var(--primary-dim);
   color: var(--primary);
   padding: 4px 10px;
-  border-radius: 20px;
+  border-radius: 0;
   font-size: 13px;
   font-weight: 500;
 }
@@ -2022,9 +2151,9 @@ body {
   margin: 12px 16px 16px;
   padding: 14px;
   border: none;
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--primary);
-  color: #fff;
+  color: var(--on-primary);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -2043,9 +2172,9 @@ body {
 .sheet-btn-sm {
   padding: 8px 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--primary);
-  color: #fff;
+  color: var(--on-primary);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -2062,7 +2191,7 @@ body {
   margin: 4px 0;
   padding: 14px;
   border: none;
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--error-bg);
   color: var(--error);
   font-size: 15px;
@@ -2114,7 +2243,7 @@ body {
   flex: 1;
   padding: 10px 12px;
   border: 1.5px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
   font-size: 15px;
   outline: none;
   background: var(--surface-alt);
@@ -2179,7 +2308,7 @@ body {
   align-items: center;
   gap: 10px;
   padding: 8px 4px;
-  border-radius: 10px;
+  border-radius: 0;
 }
 
 .participant-row .chat-avatar {
@@ -2211,18 +2340,18 @@ body {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: 0;
   text-transform: uppercase;
 }
 
 .role-badge.owner {
-  background: rgba(255,215,0,0.15);
-  color: #ffc107;
+  background: rgba(194, 224, 77, 0.15);
+  color: var(--primary);
 }
 
 .role-badge.admin {
-  background: rgba(76,175,80,0.15);
-  color: #4caf50;
+  background: var(--surface-alt);
+  color: var(--text-secondary);
 }
 
 .icon-btn.danger {
@@ -2252,7 +2381,7 @@ body {
 }
 .crop-modal {
   background: var(--surface);
-  border-radius: 12px;
+  border-radius: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -2314,7 +2443,7 @@ body {
   -webkit-appearance: none;
   appearance: none;
   background: var(--border);
-  border-radius: 2px;
+  border-radius: 0;
   outline: none;
   cursor: pointer;
 }
@@ -2354,10 +2483,11 @@ body {
 }
 .crop-btn-apply {
   background: var(--primary);
-  color: #fff;
+  color: var(--on-primary);
 }
 .crop-btn-apply:hover {
   background: var(--primary-hover);
+  color: var(--bg);
 }
 
 /* Theme Settings */
@@ -2366,7 +2496,7 @@ body {
   border-top: none;
   padding-top: 0;
   background: var(--surface-alt);
-  border-radius: 10px;
+  border-radius: 0;
   overflow: hidden;
 }
 .theme-header {
@@ -2420,7 +2550,7 @@ body {
   align-items: center;
   gap: 6px;
   padding: 10px 6px 8px;
-  border-radius: 8px;
+  border-radius: 0;
   cursor: pointer;
   transition: background 0.15s, transform 0.15s;
   background: transparent;
@@ -2443,7 +2573,7 @@ body {
 .preset-swatches span {
   width: 20px;
   height: 20px;
-  border-radius: 4px;
+  border-radius: 0;
   display: block;
   border: 1px solid rgba(255,255,255,0.1);
   flex-shrink: 0;
@@ -2489,7 +2619,7 @@ body {
   height: 28px;
   padding: 1px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 0;
   background: none;
   cursor: pointer;
   -webkit-appearance: none;
@@ -2500,7 +2630,7 @@ body {
 }
 .theme-picker::-webkit-color-swatch {
   border: none;
-  border-radius: 3px;
+  border-radius: 0;
 }
 .theme-value {
   width: 72px;
@@ -2508,7 +2638,7 @@ body {
   font-size: 11px;
   font-family: monospace;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--surface);
   color: var(--text);
   outline: none;
@@ -2522,7 +2652,7 @@ body {
   padding: 8px;
   font-size: 13px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 0;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -2563,7 +2693,7 @@ body {
   align-items: center;
   gap: 6px;
   padding: 10px 6px 8px;
-  border-radius: 8px;
+  border-radius: 0;
   cursor: pointer;
   transition: background 0.15s, transform 0.15s;
   background: transparent;
@@ -2584,7 +2714,7 @@ body {
 .preset-swatches span {
   width: 20px;
   height: 20px;
-  border-radius: 4px;
+  border-radius: 0;
   display: block;
   border: 1px solid rgba(255,255,255,0.1);
   flex-shrink: 0;
@@ -2609,7 +2739,7 @@ body {
 .preset-swatches span {
   width: 20px;
   height: 20px;
-  border-radius: 4px;
+  border-radius: 0;
   display: block;
   border: 1px solid rgba(255,255,255,0.1);
 }
@@ -2633,7 +2763,7 @@ body {
   max-width: 95vw;
   max-height: 95vh;
   object-fit: contain;
-  border-radius: 4px;
+  border-radius: 0;
   cursor: default;
 }
 .image-viewer-close {
@@ -2682,7 +2812,7 @@ body {
   font-size: 18px;
   cursor: pointer;
   padding: 4px 10px;
-  border-radius: 12px;
+  border-radius: 0;
   line-height: 1;
   transition: background 0.15s;
 }
@@ -2717,7 +2847,7 @@ body {
   font-size: 22px;
   cursor: pointer;
   padding: 4px;
-  border-radius: 4px;
+  border-radius: 0;
   text-align: center;
   transition: background 0.1s;
 }
@@ -2729,3 +2859,385 @@ body {
   vertical-align: middle;
   margin: 0 1px;
 }
+
+/* ============================================================
+   STYLEX PASS — язык интерфейса поверх мессенджера.
+   Идёт последним, поэтому перебивает индивидуальные правила.
+   Токены живут в :root вверху файла.
+
+   Правила: Unbounded на заголовках, Golos на тексте,
+   IBM Plex Mono на meta (время, счётчики, подписи).
+   Радиуса нет. Лайм — активное состояние и главное действие.
+   ============================================================ */
+
+/* ---------- шрифты по ролям ---------- */
+body, input, textarea, select, button {
+  font-family: var(--f-ui);
+}
+
+.chats-header h2,
+.chat-header-name,
+.profile-popup-name,
+.account-switcher-header,
+.settings-section-title,
+.msg-mine + .msg-meta,
+.account-item-name {
+  font-family: var(--f-display);
+  letter-spacing: -.01em;
+}
+
+.msg-meta,
+.msg-time,
+.msg-status,
+.chat-time,
+.chat-header-status,
+.unread-badge,
+.settings-label,
+.theme-label,
+.nav-item,
+.field-hint,
+.strength-label,
+.account-item-badge,
+.role-badge,
+.account-item-info,
+.preset-name,
+.profile-popup-username,
+.profile-username,
+.participant-name,
+.media-preview-info,
+.chat-name,
+.tab,
+.kicker,
+.logo .logo-x {
+  font-family: var(--f-mono);
+  letter-spacing: .04em;
+}
+
+.nav-item {
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: .1em;
+}
+
+.msg-time,
+.chat-time,
+.msg-status {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.settings-section-title,
+.settings-label,
+.theme-label {
+  text-transform: uppercase;
+  letter-spacing: .14em;
+}
+
+.settings-section-title { font-size: 11px; }
+.settings-label,
+.theme-label { font-size: 10px; }
+
+/* ---------- кнопки приложения ----------
+   Спокойные по умолчанию: тонкая рамка, тусклый текст.
+   Рамка и текст светлеют на наведении. Радиуса нет. */
+.icon-btn,
+.attach-btn,
+.emoji-btn,
+.msg-actions-btn,
+.crop-btn,
+.crop-btn-cancel,
+.btn-add-account {
+  border: 1px solid transparent;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.icon-btn:hover,
+.attach-btn:hover,
+.emoji-btn:hover,
+.msg-actions-btn:hover,
+.crop-btn-cancel:hover,
+.btn-add-account:hover {
+  border-color: var(--border);
+  background: var(--surface-alt);
+  color: var(--text);
+}
+.icon-btn:focus-visible,
+.attach-btn:focus-visible,
+.emoji-btn:focus-visible,
+.msg-actions-btn:focus-visible,
+.send-btn:focus-visible,
+.crop-btn:focus-visible,
+.btn-add-account:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.sheet-btn,
+.sheet-btn-sm {
+  min-height: var(--tap);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.sheet-btn:hover,
+.sheet-btn-sm:hover {
+  background: var(--primary-hover);
+  color: var(--bg);
+}
+
+/* главное действие экрана — единственное место с лаймовой заливкой */
+.send-btn,
+.crop-btn-apply,
+.btn-save,
+.fab {
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.send-btn:hover,
+.crop-btn-apply:hover,
+.btn-save:hover,
+.fab:hover {
+  background: var(--primary-hover);
+  color: var(--bg);
+}
+
+/* ---------- поля ввода ---------- */
+.chat-input-overlay,
+.field-input,
+.sheet-search,
+.media-preview-bar input {
+  border-radius: 0;
+  transition: border-color 120ms ease;
+}
+.chat-input-overlay:focus,
+.field-input:focus,
+.sheet-search:focus {
+  border-color: var(--text);
+  outline: none;
+}
+
+/* ---------- сообщения ---------- */
+.msg-text {
+  border: 1px solid var(--line-soft);
+  transition: border-color 120ms ease;
+}
+.msg-mine .msg-text {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.msg-theirs .msg-text {
+  background: var(--surface);
+}
+.msg:hover .msg-text { border-color: var(--border); }
+
+/* ---------- прочее ---------- */
+.bottom-nav,
+.chat-row:hover,
+.unread-badge,
+.account-item-switch:hover,
+.avatar-remove-btn {
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.chat-row:hover { background: var(--surface-alt); }
+
+.unread-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* чекбоксы и переключатели в настройках — как .chk в stylEx */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--primary);
+  border-radius: 0;
+}
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* полосы прокрутки — в цвет линии */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 3px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--ghost); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* Общий чат в списке чатов: отличается от обычных диалогов */
+.chat-avatar--general {
+  background: var(--accent, #c8ff00);
+  color: #0b0b0c;
+  font-family: var(--f-mono, monospace);
+  font-weight: 700;
+}
+
+#generalChatRow .chat-name {
+  font-weight: 600;
+}
+
+/* ---------- вход через Google ----------
+   Кнопка в одной ширине с основной, но без заливки: лаймовый блок и так один
+   на форме, Google — запасной путь, он не должен перетягивать на себя внимание. */
+.auth-alt {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+/* без этого правила display:flex выше перебивает [hidden] из UA-стилей,
+   и блок с кнопкой Google висел бы на странице до конца жизни */
+.auth-alt[hidden] { display: none; }
+
+.auth-alt-line {
+  height: 1px;
+  background: var(--border);
+  align-self: center;
+  width: 18px;
+}
+
+.auth-alt-label {
+  font-size: 10px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ghost);
+  margin-top: -8px;
+}
+
+.btn-google {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 10px 16px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--f-ui);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: .02em;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.btn-google:hover:not(:disabled) {
+  border-color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.btn-google:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+.btn-google:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+.btn-google-logo {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+/* пока идёт обмен токеном, текст прячем, а логотип тускнет */
+.btn-google.loading { color: transparent; position: relative; }
+.btn-google.loading .btn-google-logo { opacity: .35; }
+.btn-google.loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid var(--ghost);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: authSpin .7s linear infinite;
+}
+
+@keyframes authSpin { to { transform: rotate(360deg); } }
+
+.auth-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ghost);
+  text-align: center;
+}
+
+.auth-note.is-error { color: var(--error); }
+
+/* ---------- сессия закончилась ---------- */
+/* Диалог поверх всего: про приложение уже почти ничего не работает,
+   поэтому перекрываем и подложку, и сам лист. */
+.ses-overlay { z-index: 320; }
+
+.ses-sheet {
+  max-width: 400px;
+  border: 1px solid var(--border);
+}
+
+.ses-body {
+  padding: 28px 24px 24px;
+  text-align: center;
+}
+
+.ses-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.ses-title {
+  margin: 0 0 8px;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ses-text {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.ses-note {
+  margin: 0 0 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ghost);
+}
+
+.ses-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.ses-btn { width: 100%; }

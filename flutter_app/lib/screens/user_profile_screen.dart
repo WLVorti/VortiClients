@@ -301,10 +301,11 @@ class _UserProfileScreenState extends State<UserProfileScreen>
   }
 
   void _openImage(Message msg) {
+    final url = _downloadUrl(msg.fileId!);
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ImageViewerScreen(
-          imageUrl: _downloadUrl(msg.fileId!),
+        builder: (_) => ImageViewerScreen.single(
+          imageUrl: url,
           heroTag: 'shared_${msg.id}',
         ),
       ),

@@ -427,7 +427,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             );
             if (!sent) {
               _showSnackBar(AppLocalizations.of(context).uploadFailed);
-              _removeUploadTemp(tempId);
+          // Do not remove temp immediately on send; wait for WS broadcast
+          // to replace it with real message and avoid flicker
+          _scheduleUploadResolve(tempId);
             }
           } else {
             _showSnackBar(AppLocalizations.of(context).uploadFailed);
@@ -655,13 +657,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     var replacedTemp = false;
     setState(() {
       // 1) Remove any existing copy by tempId OR real messageId (dedup)
-      if (tempId != null) {
+          if (tempId != null) {
         final before = _messages.length;
         _messages.removeWhere((m) => m.id == tempId);
         _uploadProgresses.remove(tempId);
         _uploadTempFiles.remove(tempId);
         _resolveTimers.remove(tempId)?.cancel();
-        replacedTemp = before != _messages.length;
+        replacedTemp = true;
       }
       _messages.removeWhere((m) => m.id == messageId);
 
@@ -708,9 +710,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _saveFile(message, silent: true);
     }
 
-    // If this broadcast replaces our own temp upload bubble, the list keeps its
-    // position — skip the forced jump to avoid a visible flash.
-    if (_isNearBottom && !replacedTemp) _scrollToBottom(force: true);
+    if (_isNearBottom) _scrollToBottom(force: true);
   }
 
   void _handleMessageEdit(Map<String, dynamic> msg) {
@@ -1128,10 +1128,11 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
             tempId: tempId,
           );
           if (!sent) {
-            _scheduleUploadResolve(tempId);
             if (mounted) {
               _showSnackBar(AppLocalizations.of(context).uploadFailed);
-              _removeUploadTemp(tempId);
+            }
+            _removeUploadTemp(tempId);
+            if (mounted) {
               setState(() => _isUploading = false);
             }
             return;
@@ -1492,8 +1493,9 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
           if (!sent) {
             errors.add(l.uploadFailed);
             _removeUploadTemp(tempId);
+          } else {
+            _scheduleUploadResolve(tempId);
           }
-          _scheduleUploadResolve(tempId);
         } else {
           errors.add(l.uploadFailed);
           _removeUploadTemp(tempId);
@@ -2414,11 +2416,43 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
           '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}';
       return GestureDetector(
         onTap: () {
+          final List<String> imageUrls = [];
+          final List<String> heroTags = [];
+
+          for (final m in _messages) {
+            if (m.fileId != null) {
+              final fileNameM = m.text.replaceFirst('[File] ', '');
+              final extM = fileNameM.split('.').last.toLowerCase();
+              final isImageM = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']
+                  .contains(extM);
+              if (isImageM) {
+                imageUrls.add(
+                  '${ApiService.baseUrl}/download/${m.fileId}?token=${widget.api.token}',
+                );
+                heroTags.add('image_${m.id}');
+              }
+            }
+          }
+
+          final initialIndex = imageUrls.indexOf(imageUrl);
+          if (initialIndex == -1) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ImageViewerScreen.single(
+                  imageUrl: imageUrl,
+                  heroTag: 'image_${msg.id}',
+                ),
+              ),
+            );
+            return;
+          }
+
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => ImageViewerScreen(
-                imageUrl: imageUrl,
-                heroTag: 'image_${msg.id}',
+                imageUrls: imageUrls,
+                initialIndex: initialIndex,
+                heroTags: heroTags,
               ),
             ),
           );
@@ -3602,10 +3636,10 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
   void _reportUploadProgress(String tempId, double p) {
     if (!mounted) return;
     final last = _lastReportedProgress[tempId];
-    if (last != null && (p - last).abs() < 0.02 && p < 1.0) return;
+    if (last != null && (p - last).abs() < 0.05 && p < 1.0) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     final lastT = _lastReportTimeMs[tempId] ?? 0;
-    if (now - lastT < 120 && p < 1.0) return;
+    if (now - lastT < 200 && p < 1.0) return;
     _lastReportedProgress[tempId] = p;
     _lastReportTimeMs[tempId] = now;
     setState(() => _uploadProgresses[tempId] = p);
@@ -3694,33 +3728,35 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
               Image.file(
                 file,
                 fit: BoxFit.cover,
+                gaplessPlayback: true,
                 errorBuilder: (_, __, ___) => Container(
                   color: secTextColor.withValues(alpha: 0.2),
                   child: Icon(Icons.broken_image, color: textColor),
                 ),
               ),
-              Container(color: Colors.black45),
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(
-                      value: progress,
-                      strokeWidth: 3,
-                      color: Colors.white,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '$percent%',
-                      style: const TextStyle(
+              if (progress < 1.0) Container(color: Colors.black45),
+              if (progress < 1.0)
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(
+                        value: progress,
+                        strokeWidth: 3,
                         color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+                      Text(
+                        '$percent%',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -3869,7 +3905,25 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
     );
   }
 
+  int _countEmojis(String text) {
+    final countRegExp = RegExp(
+      r'[\p{Emoji}\u200d\ufe0f\u20e3\p{Emoji_Modifier}\p{Emoji_Component}]',
+      unicode: true,
+    );
+    return countRegExp.allMatches(text).length;
+  }
+
   Widget _buildMessageText(String text, Color textColor) {
+    final emojiOnlyMatch = RegExp(r'^[\p{Emoji}\u200d\ufe0f\u20e3\p{Emoji_Modifier}\p{Emoji_Component}\s]+$', unicode: true)
+        .hasMatch(text.trim());
+    final emojiOnlyCount = _countEmojis(text);
+    final bool hugeEmoji =
+        emojiOnlyMatch && emojiOnlyCount >= 1 && emojiOnlyCount <= 5;
+    final TextStyle baseStyle = TextStyle(
+      color: textColor,
+      fontSize: hugeEmoji ? 60 : 15,
+    );
+
     final urlRegExp = RegExp(r'https?://[^\s]+');
     final kolobokRegExp = RegExp(r'::kolobok:([A-Za-z0-9_\-]+)::|:k(\d+):');
 
@@ -3951,7 +4005,7 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
 
     return RichText(
       text: TextSpan(
-        style: TextStyle(color: textColor),
+        style: TextStyle(color: textColor, fontSize: baseStyle.fontSize),
         children: spans,
       ),
     );

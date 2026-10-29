@@ -4,6 +4,9 @@ const Api = {
   token: null,
   userId: null,
   profile: null,
+  _googleConfig: null,
+  _sessionExpired: false,
+  _expiredHandlers: [],
 
   async register(username, password) {
     try {
@@ -45,6 +48,56 @@ const Api = {
     } catch (e) {
       return { status: 'error', message: `Ошибка подключения: ${e.message}` };
     }
+  },
+
+  /**
+   * Вход через Google. На входе — Firebase ID token, который клиент получил
+   * от Firebase, а не от Google напрямую: сервер проверяет именно firebase-admin'ом.
+   * Ответ приходит и на 200 (аккаунт был), и на 201 (создали новый).
+   */
+  async loginGoogle(idToken, clientInfo) {
+    try {
+      const res = await fetch(`${API_BASE}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idToken,
+          ...(clientInfo || {}),
+        }),
+      });
+      const data = await res.json();
+      if (res.status === 200 || res.status === 201) {
+        this.token = data.token;
+        this.userId = data.userId;
+        this.profile = null;
+        this._saveSession(data);
+      }
+      return data;
+    } catch (e) {
+      return { status: 'error', message: `Ошибка подключения: ${e.message}` };
+    }
+  },
+
+  /**
+   * Публичный конфиг Firebase для входа через Google.
+   * Кэшируем на страницу: он нужен и при показе кнопки, и при самом входе,
+   * а ходить за ним на каждый клик незачем.
+   */
+  async getGoogleConfig() {
+    if (this._googleConfig) return this._googleConfig;
+    this._googleConfig = (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/auth/google/config`, { cache: 'no-store' });
+        if (res.status !== 200) return null;
+        const data = await res.json();
+        return data.status === 'success' ? data : null;
+      } catch (_) {
+        return null;
+      }
+    })();
+    // При обрыве сети кэш не оставляем, иначе кнопка не появится до перезагрузки.
+    this._googleConfig.catch(() => { this._googleConfig = null; });
+    return this._googleConfig;
   },
 
   _headers() {
@@ -217,10 +270,11 @@ const Api = {
     }
   },
 
-  async getChatMessages(chatId, limit = 50, before) {
+  async getChatMessages(chatId, limit = 50, before, beforeId) {
     try {
-      let url = `${API_BASE}/chats/${chatId}/messages?limit=${limit}`;
-      if (before) url += `&before=${before}`;
+      let url = `${API_BASE}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}`;
+      if (before != null) url += `&before=${encodeURIComponent(String(before))}`;
+      if (beforeId) url += `&beforeId=${encodeURIComponent(beforeId)}`;
       const res = await fetch(url, { headers: this._headers() });
       if (res.status !== 200) return { error: true, messages: [] };
       const data = await res.json();
@@ -430,4 +484,70 @@ const Api = {
       localStorage.setItem('userId', userId);
     } catch (_) {}
   },
+
+  // ---- Конец сессии ----
+
+  /**
+   * Срок годности токена в мс, 0 если прочитать не удалось.
+   * Подпись не проверяем — решение всё равно за сервером, мы лишь заранее
+   * знаем срок, чтобы не смотреть на пустые экраны.
+   */
+  tokenExpiry() {
+    try {
+      const part = String(this.token || '').split('.')[1];
+      if (!part) return 0;
+      // JWT — base64url: '-' и '_' вместо '+' и '/', пейджинга нет.
+      const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = b64 + '==='.slice((b64.length + 3) % 4);
+      const exp = JSON.parse(atob(padded)).exp;
+      return typeof exp === 'number' ? exp * 1000 : 0;
+    } catch (_) {
+      return 0;
+    }
+  },
+
+  /** Подписчики на «сессия закончилась» (session.js). */
+  onSessionExpired(fn) {
+    if (typeof fn === 'function') this._expiredHandlers.push(fn);
+  },
+
+  expireSession() {
+    if (this._sessionExpired) return;
+    this._sessionExpired = true;
+    this._expiredHandlers.slice().forEach((fn) => {
+      try { fn(); } catch (e) { console.error('session handler failed', e); }
+    });
+  },
 };
+
+// ---- Перехват 401 в одном месте ----
+// Раньше каждый метод api.js молча возвращал «пустой список», и при истёкшем
+// токене страница выглядела просто сломанной. Теперь любой 401 (кроме путей,
+// где он означает «неверный пароль» или «нет ключа субадмина») один раз
+// превращается в предложение войти заново.
+const NOT_SESSION_PATHS = ['/login', '/register', '/auth/', '/subadmin/'];
+
+function isSession401(url) {
+  let path;
+  try {
+    path = new URL(String(url), location.origin).pathname;
+  } catch (_) {
+    return false;
+  }
+  return !NOT_SESSION_PATHS.some((p) => path.startsWith(p));
+}
+
+// api.js подключается первым, поэтому перехват встаёт раньше остальных вызовов.
+// Флаг защищает от повторной обёртки при перезагрузке скрипта.
+if (!window.__sessionFetchPatched && typeof window.fetch === 'function') {
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    return nativeFetch(input, init).then(function (res) {
+      if (res.status === 401 && Api.token && isSession401(input)) {
+        Api.expireSession();
+      }
+      return res;
+    });
+  };
+  window.__sessionFetchPatched = true;
+}

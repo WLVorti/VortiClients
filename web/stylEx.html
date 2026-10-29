@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Регистрация — Самореализация</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23c8f04a'/%3E%3Crect x='6' y='3' width='2' height='10' fill='%23111'/%3E%3Crect x='6' y='7' width='8' height='2' fill='%23111'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="stylEx.css">
+</head>
+<body>
+
+<div class="auth">
+
+  <header class="top">
+    <div class="shell top-in">
+      <a class="brand" href="#"><i>С</i>Самореализация</a>
+      <span class="top-x mono">колледж №14</span>
+    </div>
+  </header>
+
+  <main class="shell">
+
+    <!-- ============ РЕГИСТРАЦИЯ: стартовый экран ============ -->
+    <section class="head">
+      <div class="kicker">набор 2026</div>
+      <h1>Свой аккаунт</h1>
+      <p class="lead">Аккаунт нужен, чтобы вести свои занятия и не терять историю записей. Без него площадка работает анонимно.</p>
+      <p class="swap">Уже есть аккаунт? <a href="#login">Войти</a></p>
+    </section>
+
+    <div class="note note-bad" id="err" hidden>
+      <i>ошибка</i>
+      <span><b>Не получилось зарегистрироваться.</b> Проверьте почту и пароль — возможно, такой аккаунт уже есть.</span>
+    </div>
+
+    <div class="note note-good" id="ok" hidden>
+      <i>готово</i>
+      <span><b>Аккаунт создан.</b> Можно войти и вести свои занятия.</span>
+    </div>
+
+    <form id="reg" novalidate>
+
+      <!-- ник: то, что видят другие -->
+      <div class="f" id="f-nick">
+        <label for="nick">анонимный ник</label>
+        <input id="nick" name="nick" type="text" placeholder="математик_214"
+               autocomplete="username" aria-describedby="nick-note">
+        <span class="f-note" id="nick-note">
+          <span>латиница, цифры, _ · от 3 знаков</span>
+          <span class="ok" data-count>0/20</span>
+        </span>
+        <span class="f-err" hidden></span>
+      </div>
+
+      <!-- почта: только домен колледжа -->
+      <div class="f" id="f-mail">
+        <label for="mail">почта колледжа</label>
+        <input id="mail" name="mail" type="email" placeholder="name@college14.ru"
+               autocomplete="email" aria-describedby="mail-note">
+        <span class="f-note" id="mail-note">
+          <span>нужна почта на college14.ru</span>
+        </span>
+        <span class="f-err" hidden></span>
+      </div>
+
+      <!-- пароль: длина, цифра, показать -->
+      <div class="f" id="f-pass">
+        <label for="pass">пароль</label>
+        <div class="f-pw">
+          <input id="pass" name="pass" type="password" placeholder="········"
+                 autocomplete="new-password" aria-describedby="pass-note">
+          <button class="peek" type="button" data-peek="pass" aria-label="показать пароль">показать</button>
+        </div>
+        <span class="f-note" id="pass-note">
+          <span>минимум 8 знаков и одна цифра</span>
+          <span class="ok" data-meter>—</span>
+        </span>
+        <span class="f-err" hidden></span>
+      </div>
+
+      <div class="f" id="f-pass2">
+        <label for="pass2">пароль ещё раз</label>
+        <input id="pass2" name="pass2" type="password" placeholder="········"
+               autocomplete="new-password">
+        <span class="f-note">
+          <span>чтобы не ошибиться</span>
+          <span class="ok" data-match></span>
+        </span>
+        <span class="f-err" hidden></span>
+      </div>
+
+      <label class="chk" id="f-terms">
+        <input type="checkbox" id="terms">
+        <span>Согласен с <a href="#">правилами площадки</a> и тем, что ник виден другим участникам.</span>
+      </label>
+
+      <div class="row-between">
+        <span class="mono" data-hint>осталось 4 поля</span>
+        <button class="linkbtn" type="button" data-reset>очистить</button>
+      </div>
+
+      <button class="btn btn-accent btn-block" type="submit" id="submit" disabled>создать аккаунт</button>
+    </form>
+
+    <!-- ============ ВХОД ============ -->
+    <section class="head" id="login" style="border-top:1px solid var(--c-line);padding-top:var(--gap-sec)">
+      <div class="kicker">уже есть аккаунт</div>
+      <h1 style="font-size:var(--fs-item)">Вход</h1>
+      <p class="swap">Нет аккаунта? <a href="#">Зарегистрироваться</a></p>
+
+      <form id="signin" novalidate style="margin-top:var(--gap-item)">
+        <div class="f" id="f-signin-mail">
+          <label for="smail">почта колледжа</label>
+          <input id="smail" type="email" placeholder="name@college14.ru" autocomplete="email">
+          <span class="f-err" hidden></span>
+        </div>
+
+        <div class="f" id="f-signin-pass">
+          <label for="spass">пароль</label>
+          <div class="f-pw">
+            <input id="spass" type="password" placeholder="········" autocomplete="current-password">
+            <button class="peek" type="button" data-peek="spass" aria-label="показать пароль">показать</button>
+          </div>
+          <span class="f-err" hidden></span>
+        </div>
+
+        <div class="row-between">
+          <label class="chk" style="margin:0">
+            <input type="checkbox" checked>
+            <span>не выходить</span>
+          </label>
+          <button class="linkbtn" type="button">забыли пароль</button>
+        </div>
+
+        <button class="btn btn-block" type="submit">войти</button>
+      </form>
+    </section>
+
+    <!-- ============ ПРИМЕРЫ СОСТОЯНИЙ ============ -->
+    <section class="demo">
+      <h2 class="demo-t">состояния полей</h2>
+      <p class="demo-note">Пустое, фокус, ошибка. Поля без рамки — снизу линия, как на странице создания занятия.</p>
+      <div class="demo-grid">
+
+        <div class="demo-box">
+          <span class="demo-t">пусто</span>
+          <div class="f" style="margin:0">
+            <label for="d1">анонимный ник</label>
+            <input id="d1" placeholder="математик_214">
+          </div>
+        </div>
+
+        <div class="demo-box">
+          <span class="demo-t">фокус</span>
+          <div class="f" style="margin:0">
+            <label for="d2">анонимный ник</label>
+            <input id="d2" value="математик_214" autofocus>
+          </div>
+        </div>
+
+        <div class="demo-box">
+          <span class="demo-t">ошибка</span>
+          <div class="f err" style="margin:0">
+            <label for="d3">почта колледжа</label>
+            <input id="d3" value="kirill@gmail.com">
+            <span class="f-err">нужна почта на college14.ru</span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="demo">
+      <h2 class="demo-t">кнопки</h2>
+      <p class="demo-note">Лайм — только главная. Вторая кнопка на экране всегда спокойная.</p>
+      <div class="demo-grid">
+        <div class="demo-box">
+          <span class="demo-t">обычная</span>
+          <div class="stack">
+            <button class="btn btn-block">войти</button>
+            <button class="btn btn-block" disabled>создать аккаунт</button>
+          </div>
+        </div>
+        <div class="demo-box">
+          <span class="demo-t">главная</span>
+          <div class="stack">
+            <button class="btn btn-accent btn-block">создать аккаунт</button>
+            <button class="btn btn-accent btn-block" disabled>создать аккаунт</button>
+          </div>
+        </div>
+        <div class="demo-box">
+          <span class="demo-t">уведомления</span>
+          <div class="stack">
+            <div class="note note-good" style="margin:0">
+              <i>готово</i><span><b>Аккаунт создан.</b> Можно войти.</span>
+            </div>
+            <div class="note note-bad" style="margin:0">
+              <i>ошибка</i><span><b>Такой ник занят.</b> Попробуйте другой.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="demo">
+      <h2 class="demo-t">подпись поля</h2>
+      <p class="demo-note">Подсказка слева, счётчик или статус справа. Обе строки моно и мелкие.</p>
+      <div class="demo-grid">
+        <div class="demo-box">
+          <div class="f" style="margin:0">
+            <label for="d4">анонимный ник</label>
+            <input id="d4" value="математик_214">
+            <span class="f-note">
+              <span>латиница, цифры, _ · от 3 знаков</span>
+              <span class="ok">13/20</span>
+            </span>
+          </div>
+        </div>
+        <div class="demo-box">
+          <div class="f" style="margin:0">
+            <label for="d5">пароль</label>
+            <div class="f-pw">
+              <input id="d5" type="password" value="············">
+              <button class="peek" type="button">скрыть</button>
+            </div>
+            <span class="f-note">
+              <span>минимум 8 знаков и одна цифра</span>
+              <span class="ok">12 знаков</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="foot">
+    <div class="shell foot-in">
+      <span>Самореализация · внутренняя площадка колледжа</span>
+      <a href="#">правила</a>
+      <a href="#">помощь</a>
+      <span class="r">болванка интерфейса · без бэкенда</span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+/* Болванка: проверка в браузере, без отправки на сервер. */
+const $ = s => document.querySelector(s);
+
+const fNick = $('#f-nick'), fMail = $('#f-mail'), fPass = $('#f-pass'),
+      fPass2 = $('#f-pass2'), fTerms = $('#f-terms');
+const nick = $('#nick'), mail = $('#mail'), pass = $('#pass'), pass2 = $('#pass2');
+const errBox = $('#err'), okBox = $('#ok'), submit = $('#submit');
+
+/* поля-подсказки (согласие) без .f-err, поэтому hide терпит null */
+const hide = b => { if (b) b.hidden = true; };
+const show = b => { if (b) b.hidden = false; };
+const setErr = (box, msg) => {
+  box.classList.add('err');
+  const e = box.querySelector('.f-err');
+  if (e) { e.textContent = msg; show(e); }
+};
+const clearErr = box => {
+  box.classList.remove('err');
+  hide(box.querySelector('.f-err'));
+};
+
+const RULES = {
+  nick: /^[a-zA-Z0-9_]{3,20}$/,
+  mail: /^[^\s@]+@college14\.ru$/i
+};
+
+const passOk = v => v.length >= 8 && /\d/.test(v);
+
+/* Пустое поле не считаем ошибкой: красным становится только
+   неправильно заполненное. Пустое держим серым. */
+const markLive = (box, valid) => {
+  box.classList.toggle('err', !valid);
+  if (valid) clearErr(box);
+};
+
+const sync = () => {
+  hide(errBox); hide(okBox);
+
+  const nV = RULES.nick.test(nick.value.trim());
+  const mV = RULES.mail.test(mail.value.trim());
+  const pV = passOk(pass.value);
+  const p2V = pass.value !== '' && pass2.value === pass.value;
+
+  if (nick.value.trim()) markLive(fNick, nV);
+  else clearErr(fNick);
+  if (mail.value.trim()) markLive(fMail, mV);
+  else clearErr(fMail);
+  if (pass2.value) markLive(fPass2, p2V);
+  else clearErr(fPass2);
+  clearErr(fPass);
+
+  $('[data-count]').textContent = nick.value.trim().length + '/20';
+  $('[data-meter]').textContent = pass.value ? (pV ? pass.value.length + ' знаков' : 'слабый') : '—';
+  $('[data-match]').textContent = pass2.value ? (p2V ? 'совпадает' : 'не совпадает') : '';
+
+  /* «осталось 1 поле / 2 поля / 3 поля» — простое множественное число */
+  const left = 4 - [nick, mail, pass, pass2].filter(i => i.value.trim()).length;
+  $('[data-hint]').textContent = left === 0
+    ? 'все поля заполнены'
+    : 'осталось ' + left + ' ' + (left === 1 ? 'поле' : left < 4 ? 'поля' : 'полей');
+
+  submit.disabled = !(nV && mV && pV && p2V && $('#terms').checked);
+};
+
+[nick, mail, pass, pass2].forEach(i => i.addEventListener('input', sync));
+$('#terms').addEventListener('change', sync);
+$('[data-reset]').addEventListener('click', () => { $('#reg').reset(); sync(); });
+
+/* показать / скрыть пароль */
+document.querySelectorAll('[data-peek]').forEach(b =>
+  b.addEventListener('click', () => {
+    const i = document.getElementById(b.dataset.peek);
+    const show_ = i.type === 'password';
+    i.type = show_ ? 'text' : 'password';
+    b.textContent = show_ ? 'скрыть' : 'показать';
+    b.setAttribute('aria-label', show_ ? 'скрыть пароль' : 'показать пароль');
+  })
+);
+
+$('#reg').addEventListener('submit', e => {
+  e.preventDefault();
+  let bad = false;
+  if (!RULES.nick.test(nick.value.trim())) { setErr(fNick, 'латиница, цифры и _, от 3 до 20 знаков'); bad = true; }
+  if (!RULES.mail.test(mail.value.trim())) { setErr(fMail, 'нужна почта на college14.ru'); bad = true; }
+  if (!passOk(pass.value)) { setErr(fPass, 'минимум 8 знаков и хотя бы одна цифра'); bad = true; }
+  if (pass.value !== pass2.value) { setErr(fPass2, 'пароли не совпадают'); bad = true; }
+  if (!$('#terms').checked) { fTerms.classList.add('err'); bad = true; }
+
+  if (bad) { show(errBox); hide(okBox); return; }
+  hide(errBox); show(okBox);
+});
+
+$('#signin').addEventListener('submit', e => {
+  e.preventDefault();
+  const m = $('#smail').value.trim(), p = $('#spass').value;
+  if (!RULES.mail.test(m)) {
+    setErr($('#f-signin-mail'), 'нужна почта на college14.ru');
+    show(errBox); hide(okBox); return;
+  }
+  if (p.length < 8) {
+    setErr($('#f-signin-pass'), 'пароль короче 8 знаков');
+    show(errBox); hide(okBox); return;
+  }
+  hide(errBox);
+  okBox.querySelector('b').textContent = 'Проверяем…';
+  okBox.querySelector('span').lastChild.textContent = ' Сверяем с базой — на сервере ответа пока нет, это болванка.';
+  show(okBox);
+});
+
+sync();
+</script>
+
+</body>
+</html>

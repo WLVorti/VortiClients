@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Самореализация — </title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="/favicon.png">
+<!-- style.css даёт палитру и шрифты, selfrealize.css — раскладку страницы -->
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/selfrealize.css">
+  <link rel="stylesheet" href="/css/markdown.css">
+</head>
+<body class="sr-body">
+
+<div class="sr-shell">
+
+  <header class="sr-top">
+    <div class="sr-wrap sr-top-in">
+      <a class="sr-brand" href="/"><i aria-hidden="true">С</i>Самореализация</a>
+      <span class="sr-top-x">ДИТК</span>
+    </div>
+  </header>
+
+  <main class="sr-wrap">
+
+    <!--
+      Четыре вкладки. «Занятия» — главная: то, ради чего площадка и делалась,
+      «куда можно пойти сегодня». Дальше кабинет (мои занятия и мои записи),
+      предложения кандидату и новости субадмина.
+      Вкладка живёт в разметке, а не в JS: переключение должно работать даже
+      если скрипт не загрузился, и href'ы остаются обычными ссылками.
+    -->
+    <div class="sr-tabs" role="tablist" aria-label="Разделы площадки">
+      <a class="sr-tab is-active" id="srTabSessions" href="#sessions" role="tab"
+         aria-selected="true" aria-controls="srPanelSessions" data-panel="sessions">
+        занятия
+      </a>
+      <a class="sr-tab" id="srTabCabinet" href="#cabinet" role="tab"
+         aria-selected="false" aria-controls="srPanelCabinet" data-panel="cabinet">
+        мой кабинет
+      </a>
+      <a class="sr-tab" id="srTabSuggestions" href="#suggestions" role="tab"
+         aria-selected="false" aria-controls="srPanelSuggestions" data-panel="suggestions">
+        предложения
+      </a>
+      <a class="sr-tab" id="srTabNews" href="#news" role="tab"
+         aria-selected="false" aria-controls="srPanelNews" data-panel="news">
+        новости
+      </a>
+    </div>
+
+    <!-- ---------- вкладка «занятия» ---------- -->
+    <div class="sr-panel" id="srPanelSessions" role="tabpanel" aria-labelledby="srTabSessions">
+
+      <!--
+        Поиск и фильтры. Все поля необязательны и комбинируются через AND:
+        «математика» + «сегодня» + «аудитория 204» = занятия, которые подходят
+        по всем трём условиям.
+        Значение фильтров живёт в URL (?q=…&place=…&from=…): страницу с
+        найденным можно переслать, а кнопка «назад» возвращает к прошлому
+        фильтру.
+      -->
+      <section class="sr-filters">
+        <div class="sr-search">
+          <label class="sr-lbl" for="srQ">Поиск</label>
+          <input
+            id="srQ"
+            class="sr-input"
+            type="search"
+            autocomplete="off"
+            placeholder="занятие, направление, место или ведущий">
+        </div>
+
+        <div class="sr-filter-row">
+          <div class="sr-fgroup" role="group" aria-label="Когда">
+            <button class="sr-chip is-active" type="button" data-when="all">все</button>
+            <button class="sr-chip" type="button" data-when="today">сегодня</button>
+            <button class="sr-chip" type="button" data-when="tomorrow">завтра</button>
+            <button class="sr-chip" type="button" data-when="week">неделя</button>
+          </div>
+          <input id="srPlace" class="sr-input sr-input--sm" type="search" autocomplete="off"
+                 placeholder="место" aria-label="Фильтр по месту">
+          <input id="srHost" class="sr-input sr-input--sm" type="search" autocomplete="off"
+                 placeholder="ведущий" aria-label="Фильтр по ведущему">
+        </div>
+      </section>
+
+      <section class="sr-feed-sec" id="srOpenSec" hidden>
+        <div class="sr-feed-head">
+          <h2 class="sr-form-h">Идёт набор</h2>
+          <span class="sr-feed-count">дата ещё не назначена</span>
+        </div>
+        <!--
+          Открытый набор живёт отдельным блоком, а не первым пунктом ленты:
+          у него нет даты, а лента отсортирована по времени, и в общем списке
+          он был бы либо всегда первым, либо всегда последним.
+        -->
+        <div class="sr-feed" id="srOpenFeed"></div>
+      </section>
+
+      <section class="sr-feed-sec">
+        <div class="sr-feed-head">
+          <h2 class="sr-form-h">Занятия</h2>
+          <span class="sr-feed-count" id="srSessionsCount"></span>
+          <button class="sr-btn sr-btn--ghost" id="srCreateOpen" type="button">создать занятие</button>
+        </div>
+
+        <div class="sr-feed" id="srSessionsFeed">
+          <div class="sr-feed-empty" id="srSessionsEmpty">Занятий пока нет.</div>
+        </div>
+
+        <div class="sr-feed-more" id="srSessionsMoreWrap" hidden>
+          <button class="sr-btn sr-more" id="srSessionsMore" type="button">показать ещё</button>
+        </div>
+      </section>
+
+      <!--
+        Форма создания занятия. Прячется, а не живёт в отдельной странице:
+        ведущий чаще всего создаёт занятие, уже глядя на ленту, и переход туда
+        сбрасывал бы фильтры и позицию прокрутки.
+        datetime-local отдаёт локальную строку без часового пояса, поэтому перед
+        отправкой она переводится в миллисекунды через Date — иначе браузер в
+        другом часовом поясе показал бы занятие не в том времени.
+      -->
+      <section class="sr-form-sec" id="srCreateWrap" hidden>
+        <h2 class="sr-form-h">Новое занятие</h2>
+        <p class="sr-form-sub">Заполните и опубликуйте — занятие появится в ленте сразу.</p>
+
+        <form class="sr-form" id="srCreateForm" novalidate>
+          <label class="sr-lbl" for="srNewTitle">Название</label>
+          <input id="srNewTitle" class="sr-input" type="text" maxlength="160"
+                 placeholder="например: разбор задач по математике" required>
+
+          <label class="sr-lbl" for="srNewDirection">Направление</label>
+          <input id="srNewDirection" class="sr-input" type="text" maxlength="60"
+                 placeholder="математика, спорт, музыка…">
+
+          <!--
+            Место — выбор из трёх видов, а не свободный текст по умолчанию.
+            Чаще всего занятие либо в вебе, либо в кабинете, и два слова «в
+            кабинете» человек пишет руками в каждом занятии; выбор делает это
+            один раз и даёт фильтр по месту, который иначе сравнивал бы колонку
+            с произвольным текстом.
+          -->
+          <span class="sr-lbl" id="srPlaceKindLbl">Место</span>
+          <div class="sr-fgroup sr-place-pick" role="radiogroup" aria-labelledby="srPlaceKindLbl">
+            <label class="sr-chip">
+              <input type="radio" name="srPlaceKind" value="web"> в вебе
+            </label>
+            <label class="sr-chip">
+              <input type="radio" name="srPlaceKind" value="room"> в кабинете
+            </label>
+            <label class="sr-chip is-active">
+              <input type="radio" name="srPlaceKind" value="custom" checked> свой текст
+            </label>
+          </div>
+          <!-- Поле своего текста появляется только при выборе «свой текст»:
+               пустое поле «аудитория 204» у человека, которому нужен веб, —
+               это лишний вопрос, на который надо ответить «не знаю». -->
+          <div id="srNewPlaceWrap">
+            <label class="sr-lbl" for="srNewPlace">Где именно</label>
+            <input id="srNewPlace" class="sr-input" type="text" maxlength="120"
+                   placeholder="аудитория 204">
+          </div>
+
+          <div class="sr-two">
+            <div>
+              <label class="sr-lbl" for="srNewSeats">Мест</label>
+              <input id="srNewSeats" class="sr-input" type="number" min="1" max="200" value="10" required>
+            </div>
+            <div id="srNewDurationWrap">
+              <label class="sr-lbl" for="srNewDuration">Длительность, мин</label>
+              <input id="srNewDuration" class="sr-input" type="number" min="15" max="720" step="15" value="60">
+            </div>
+          </div>
+
+          <!--
+            Дата по умолчанию НЕ нужна. Технический тур или набор в команду
+            может висеть месяц, пока не сложится дата, и требовать её сразу
+            значит заставлять человека выдумывать. Галочка включает дату —
+            тогда появляются поле и требование «не раньше чем через час».
+          -->
+          <label class="sr-check">
+            <input type="checkbox" id="srNewHasDate">
+            <span class="sr-box" aria-hidden="true"></span>
+            <span class="sr-check-t">
+              <b>Назначить дату сейчас</b>
+              <i>Без даты занятие попадёт в «идёт набор»: его увидят все,
+                 записаться можно в любой момент, а дату вы назначите позже
+                 одной кнопкой в кабинете.</i>
+            </span>
+          </label>
+          <div class="sr-two" id="srNewDateWrap" hidden>
+            <div>
+              <label class="sr-lbl" for="srNewDate">Дата и время</label>
+              <input id="srNewDate" class="sr-input" type="datetime-local">
+            </div>
+          </div>
+
+          <label class="sr-lbl" for="srNewDesc">Описание</label>
+          <textarea id="srNewDesc" class="sr-ta" rows="4" maxlength="4000"
+                    placeholder="что будет на занятии, что взять с собой"></textarea>
+
+          <div class="sr-msg" id="srCreateMsg" role="status" aria-live="polite" hidden></div>
+
+          <div class="sr-btn-row">
+            <button class="sr-btn sr-submit" id="srCreateSubmit" type="submit">опубликовать</button>
+            <button class="sr-btn sr-btn--ghost" id="srCreateClose" type="button">отмена</button>
+          </div>
+        </form>
+      </section>
+    </div><!-- /srPanelSessions -->
+
+    <!--
+      ---------- вкладка «мой кабинет» ----------
+
+      Три блока: мои занятия (веду), участники моих занятий и мои записи.
+      Показывается только вошедшим: без токена сервер всё равно ответил бы 401,
+      а гостю честнее показать предложение войти.
+    -->
+    <div class="sr-panel" id="srPanelCabinet" role="tabpanel" aria-labelledby="srTabCabinet" hidden>
+
+      <section class="sr-feed-sec" id="srCabinetGuest" hidden>
+        <div class="sr-feed-empty">
+          Кабинет доступен после входа — там ваши занятия и записи.
+          <a class="sr-lnk" href="/">войти</a>
+        </div>
+      </section>
+
+      <section class="sr-feed-sec" id="srCabinetBody" hidden>
+        <div class="sr-feed-head">
+          <h2 class="sr-form-h">Мои занятия</h2>
+          <span class="sr-feed-count" id="srMySessionsCount"></span>
+        </div>
+        <div class="sr-feed" id="srMySessionsFeed"></div>
+      </section>
+
+      <section class="sr-feed-sec" id="srMyEnrollSec" hidden>
+        <div class="sr-feed-head">
+          <h2 class="sr-form-h">Мои записи</h2>
+          <span class="sr-feed-count" id="srMyEnrollCount"></span>
+        </div>
+        <div class="sr-feed" id="srMyEnrollFeed"></div>
+      </section>
+    </div><!-- /srPanelCabinet -->
+
+    <!-- ---------- вкладка «предложения» ---------- -->
+    <div class="sr-panel" id="srPanelSuggestions" role="tabpanel" aria-labelledby="srTabSuggestions" hidden>
+    <section class="sr-form-sec">
+      <h2 class="sr-form-h">Предложение кандидату</h2>
+      <p class="sr-form-sub">Напишите предложение — оно появится в ленте сразу.</p>
+
+      <form class="sr-form" id="srForm" novalidate>
+        <label class="sr-lbl" for="srText">Ваше предложение</label>
+        <textarea
+          id="srText"
+          name="text"
+          class="sr-ta"
+          rows="5"
+          maxlength="2000"
+          placeholder="например: возьмите на себя кураторство, попробуйте себя на практике…"
+          required></textarea>
+
+        <div class="sr-meta">
+          <span class="sr-count" id="srCount">0 / 2000</span>
+        </div>
+
+        <label class="sr-check">
+          <input type="checkbox" id="srAnon" name="anonymous">
+          <span class="sr-box" aria-hidden="true"></span>
+          <span class="sr-check-t">
+            <b>Отправить анонимно</b>
+            <i id="srAnonHint">предложение придёт без вашего имени</i>
+          </span>
+        </label>
+
+        <div class="sr-msg" id="srMsg" role="status" aria-live="polite" hidden></div>
+
+        <button class="sr-btn sr-btn-block sr-submit" id="srSubmit" type="submit">отправить предложение</button>
+      </form>
+    </section>
+
+    <!-- Публичная лента: написанное сразу появляется здесь. -->
+    <section class="sr-feed-sec" id="srFeedSec">
+      <div class="sr-feed-head">
+        <h2 class="sr-form-h">Предложения</h2>
+        <span class="sr-feed-count" id="srFeedCount"></span>
+      </div>
+
+      <div class="sr-feed" id="srFeed">
+        <div class="sr-feed-empty" id="srFeedEmpty">Пока пусто — будьте первым.</div>
+      </div>
+
+      <div class="sr-feed-more" id="srFeedMoreWrap" hidden>
+        <button class="sr-btn sr-more" id="srFeedMore" type="button">показать ещё</button>
+      </div>
+    </section>
+    </div><!-- /srPanelSuggestions -->
+
+    <!--
+      ---------- вкладка «новости» ----------
+
+      Новости приходят из /selfrealize/news и приходят уже готовыми: текст
+      приходит markdown, и разбирает его markdown.js при отрисовке. Картинки
+      и видео — вложения новости, их рендерит js/selfrealize.js.
+      Панель скрыта по умолчанию: пока вкладка не выбрана, лента новостей не
+      качается вовсе (initNewsFeed вызывается при первом переключении).
+    -->
+    <div class="sr-panel" id="srPanelNews" role="tabpanel" aria-labelledby="srTabNews" hidden>
+
+      <section class="sr-feed-sec">
+        <div class="sr-feed-head">
+          <h2 class="sr-form-h">Новости</h2>
+          <span class="sr-feed-count" id="srNewsCount"></span>
+        </div>
+
+        <div class="sr-news" id="srNewsFeed">
+          <div class="sr-feed-empty" id="srNewsEmpty">Новостей пока нет.</div>
+        </div>
+
+        <div class="sr-feed-more" id="srNewsMoreWrap" hidden>
+          <button class="sr-btn sr-more" id="srNewsMore" type="button">показать ещё</button>
+        </div>
+      </section>
+
+    </div><!-- /srPanelNews -->
+
+  </main>
+
+  <footer class="sr-foot">
+    <div class="sr-wrap sr-foot-in">
+      <span>Самореализация · внутренняя площадка колледжа</span>
+      <span class="sr-r">2026</span>
+    </div>
+  </footer>
+
+</div>
+
+<!-- markdown.js нужен и ленте новостей, и предпросмотру в субадминке -->
+<script src="/js/markdown.js"></script>
+<script src="/js/selfrealize.js"></script>
+</body>
+</html>

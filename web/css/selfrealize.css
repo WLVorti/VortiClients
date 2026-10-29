@@ -1,0 +1,823 @@
+/* ============================================================
+   «Самореализация» — кнопка перехода в шапке и страница-заглушка.
+   Правила палитры — как в stylEx: лайм только за главной кнопкой экрана,
+   вторая кнопка на экране всегда спокойная, с линией.
+   ============================================================ */
+
+/* ---------- Кнопка в шапке чатов ---------- */
+.selfrealize-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--f-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.selfrealize-btn:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+.selfrealize-btn:active { background: var(--primary-dim); }
+.selfrealize-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Заголовок и кнопка не должны сжиматься друг в друга на узком экране. */
+.chats-header h2 { min-width: 0; }
+
+/* ---------- Страница /selfrealize ---------- */
+body.sr-body {
+  display: block;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.sr-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.sr-wrap {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* Шапка повторяет плашку из stylEx: бренд слева, подпись моно справа. */
+.sr-top { border-bottom: 1px solid var(--border); }
+.sr-top-in {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+}
+.sr-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: var(--tap);
+  text-decoration: none;
+  font-family: var(--f-display);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.sr-brand i {
+  width: 22px; height: 22px; flex: none;
+  display: grid; place-items: center;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-style: normal;
+  font-size: 12px;
+}
+.sr-top-x {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ---------- Кнопки страницы ---------- */
+.sr-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: var(--tap);
+  padding: 10px 16px;
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  color: var(--on-primary);
+  font-family: var(--f-ui);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.sr-btn:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: var(--bg);
+}
+.sr-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.sr-btn-block { width: 100%; }
+
+/* ---------- Форма предложения ---------- */
+.sr-form-sec {
+  margin-top: 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--border);
+}
+.sr-form-h {
+  margin: 0;
+  font-family: var(--f-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: var(--text);
+}
+.sr-form-sub {
+  margin: 8px 0 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.sr-form { display: block; }
+.sr-lbl {
+  display: block;
+  margin-bottom: 8px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ghost);
+}
+
+.sr-ta {
+  display: block;
+  width: 100%;
+  padding: 13px 15px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--f-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 110px;
+  transition: border-color 0.2s;
+}
+.sr-ta::placeholder { color: var(--text-muted); }
+.sr-ta:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.sr-ta:disabled { opacity: .6; }
+
+/* Поля ввода. .sr-input повторяет .sr-ta без вертикального ресайза: иначе
+   однострочное поле тянулось бы на пол-экрана. */
+.sr-input {
+  display: block;
+  width: 100%;
+  padding: 13px 15px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--f-ui);
+  font-size: 15px;
+  line-height: 1.4;
+  transition: border-color 0.2s;
+}
+.sr-input::placeholder { color: var(--text-muted); }
+.sr-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.sr-input--sm {
+  padding: 10px 12px;
+  font-size: 14px;
+  flex: 1 1 140px;
+  min-width: 0;
+}
+/* datetime-local в некоторых браузерах рисует свою иконку, которая не
+   помещается в узкое поле и перекрывает текст. */
+input[type="datetime-local"].sr-input { min-height: 47px; }
+
+.sr-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 520px) {
+  .sr-two { grid-template-columns: 1fr; }
+}
+
+.sr-btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.sr-lnk { color: var(--primary); }
+
+.sr-meta {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 7px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--ghost);
+}
+.sr-count.is-over { color: var(--primary); }
+
+/* Галочка анонимности. Нативный input скрыт, но остаётся фокусируемым —
+   иначе по табу до неё не дойти и не включить с клавиатуры. */
+.sr-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-top: 16px;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.2s;
+}
+.sr-check:hover { border-color: var(--accent-line); }
+.sr-check input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+.sr-box {
+  flex: none;
+  position: relative;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border: 1px solid var(--text-muted);
+  background: var(--bg);
+  transition: background 0.15s, border-color 0.15s;
+}
+.sr-box::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 5px;
+  height: 10px;
+  border: solid var(--on-primary);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(.4);
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.sr-check input:checked + .sr-box { background: var(--primary); border-color: var(--primary); }
+.sr-check input:checked + .sr-box::after { opacity: 1; transform: rotate(45deg) scale(1); }
+.sr-check input:focus-visible + .sr-box { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+.sr-check-t { display: block; font-size: 14px; line-height: 1.4; }
+.sr-check-t b { display: block; font-weight: 500; color: var(--text); }
+.sr-check-t i {
+  display: block;
+  margin-top: 3px;
+  font-style: normal;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Статус отправки */
+.sr-msg {
+  margin-top: 14px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.sr-msg[hidden] { display: none; }
+.sr-msg[data-state="ok"] {
+  border-color: var(--accent-line);
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+  color: var(--text);
+}
+.sr-msg[data-state="err"] {
+  border-color: color-mix(in srgb, var(--error) 45%, var(--border));
+  background: color-mix(in srgb, var(--error) 8%, transparent);
+  color: var(--text);
+}
+.sr-msg b { font-weight: 600; }
+
+.sr-submit { margin-top: 16px; }
+.sr-submit:disabled { opacity: .55; cursor: progress; }
+
+/* ---------- Публичная лента предложений ---------- */
+.sr-feed-sec {
+  margin-top: 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--border);
+}
+.sr-feed-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.sr-feed-count {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ghost);
+}
+
+.sr-feed { display: flex; flex-direction: column; gap: 10px; }
+
+.sr-feed-empty {
+  padding: 22px 15px;
+  border: 1px dashed var(--border);
+  font-size: 14px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.sr-feed-empty[hidden] { display: none; }
+
+.sr-item {
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+}
+/* Только что появившееся — тонкой акцентной рамкой. Анимация вешается только
+   на data-fresh: если её держать на .sr-item, каждая тихая перерисовка ленты
+   проигрывала бы её заново у всех элементов раз в 20 секунд. */
+.sr-item[data-fresh="1"] { border-color: var(--accent-line); animation: sr-in .25s ease both; }
+
+/* Анонимное предложение чуть приглушено: видно, что оно без подписи. */
+.sr-item[data-anon="1"] { background: transparent; border-style: dashed; }
+
+.sr-item-text {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.sr-item-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.sr-item-who { color: var(--primary); }
+.sr-item[data-anon="1"] .sr-item-who { color: var(--text-muted); }
+.sr-item-dot { color: var(--ghost); }
+.sr-item-time { color: var(--ghost); margin-left: auto; }
+
+.sr-feed-more { margin-top: 14px; }
+.sr-more {
+  width: 100%;
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+.sr-more:hover { background: transparent; border-color: var(--text-muted); color: var(--text); }
+.sr-more:disabled { opacity: .5; cursor: progress; }
+
+@keyframes sr-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sr-item { animation: none; }
+}
+
+/* ---------- Вкладки ---------- */
+/* Все вкладки — обычные ссылки (href="#news"), поэтому разметка работает и
+   без JS: скрипт только переключает атрибуты и пишет выбранное в hash.
+   grid-template-columns задан числом, а не auto: у нас ровно четыре вкладки,
+   и на телефоне подпись «мой кабинет» не должна сжимать остальные до
+   нечитаемых. На узком экране вкладки переносятся на две строки. */
+.sr-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  margin-top: 28px;
+  border-bottom: 1px solid var(--border);
+}
+.sr-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  padding: 0 10px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--ghost);
+  transition: color 0.2s, border-color 0.2s;
+}
+.sr-tab:hover { color: var(--text-secondary); }
+.sr-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* Активная вкладка помечена подчёркиванием, а не заливкой: лайм на всю
+   ширину вкладки спорил бы с главной кнопкой страницы. */
+.sr-tab.is-active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.sr-panel { display: block; }
+.sr-panel[hidden] { display: none; }
+
+/* ---------- Поиск и фильтры занятий ---------- */
+.sr-filters { margin: 18px 0 4px; }
+.sr-search { margin-bottom: 10px; }
+
+/* Чипы «сегодня/завтра/неделя» — это переключатель, поэтому они живут в
+   role="group" и выглядят как вкладки, а не как кнопки подачи формы. */
+.sr-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sr-fgroup { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.sr-chip {
+  padding: 8px 13px;
+  border: 1px solid var(--border);
+  background: transparent;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ghost);
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.sr-chip:hover { color: var(--text-secondary); border-color: var(--text-muted); }
+.sr-chip:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.sr-chip.is-active {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* ---------- Карточка занятия ---------- */
+/*
+ * Время вынесено в отдельную колонку слева, а не в строку над названием:
+ * «куда можно пойти сегодня» читается по вертикали — человек видит сначала
+ * «сегодня в 18:30», и только потом решает, читать ли название. На телефоне
+ * колонка схлопывается в строку над текстом.
+ */
+.sr-sess {
+  display: grid;
+  grid-template-columns: 148px 1fr;
+  gap: 14px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+}
+.sr-sess[data-cancelled="1"] { opacity: .6; }
+.sr-sess[data-cancelled="1"] .sr-sess-title { text-decoration: line-through; }
+
+.sr-sess-when {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 14px;
+  border-right: 1px solid var(--border);
+}
+.sr-sess-when strong {
+  font-family: var(--f-display);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+  color: var(--text);
+}
+.sr-sess-when span {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ghost);
+}
+
+/* Переключатель места. Чип с радиокнопкой внутри: сама кнопка не нужна,
+   но без подсветки выбранного не видно, что выбор сделан, — radio в этой
+   системе стилизован только через .is-active на чипе. */
+.sr-place-pick { margin-bottom: 14px; }
+.sr-place-pick .sr-chip { cursor: pointer; }
+.sr-place-pick input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+/* Фокус должен быть виден и на самом чипе: input спрятан, и без этого
+   переключение с клавиатуры выглядело бы как «ничего не происходит». */
+.sr-place-pick .sr-chip:has(input:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Чекбокс «назначить дату сейчас» намеренно НЕ имеет своих правил: он
+   использует уже существующие .sr-check / .sr-box / .sr-check-t из формы
+   предложений. Свои стили здесь означали бы, что один и тот же чекбокс на
+   одной странице выглядит двумя разными элементами. */
+
+/* Открытый набор: одноколонная карточка с цветной полосой слева вместо
+   колонки со временем. Полоса — единственный признак, который нужно видеть
+   с расстояния; плашка подтверждает его словами. */
+.sr-sess[data-open="1"] {
+  grid-template-columns: 1fr;
+  border-left: 2px solid var(--accent-line);
+}
+
+.sr-sess-openbadge {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 4px 9px;
+  border: 1px solid var(--accent-line);
+  color: var(--primary);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* Закрытый набор: та же плашка, но приглушённая. Различие по цвету читается
+   быстрее, чем слово «закрыт» в подписи. */
+.sr-sess-openbadge.is-closed {
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+/* Встроенное поле даты в кабинете: появляется в строке, а не в модалке. */
+.sr-date-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.sr-date-inline .sr-lbl { margin-bottom: 0; }
+
+.sr-sess-main { min-width: 0; }
+.sr-sess-title {
+  margin: 0 0 6px;
+  font-family: var(--f-display);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+  color: var(--text);
+}
+
+.sr-sess-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.sr-sess-bit b { font-weight: 400; color: var(--ghost); }
+
+.sr-sess-desc {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.sr-sess-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 13px;
+}
+
+/* Остаток мест — единственное место в карточке, где важна подсветка:
+   «1 место свободно» должно читаться как «успевай», а не как подпись. */
+.sr-sess-seats {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ghost);
+}
+.sr-sess-seats[data-state="few"] { color: var(--warning, #f5a524); }
+.sr-sess-seats[data-state="full"] { color: var(--text-muted); }
+
+.sr-sess-act { margin-left: auto; }
+
+/* Причина отказа на карточке. Держится в потоке под кнопкой, чтобы её было
+   видно и после перерисовки: раньше текст жил на кнопке и стирался вместе с
+   ней, оставляя кнопку, которая молча не срабатывает. */
+.sr-sess-msg {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--warning, #f5a524);
+}
+.sr-sess-act.is-enrolled {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.sr-sess-code,
+.sr-sess-badge {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ghost);
+}
+.sr-sess-badge {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+}
+
+@media (max-width: 560px) {
+  .sr-sess { grid-template-columns: 1fr; }
+  .sr-sess-when {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 10px;
+    padding-right: 0;
+    padding-bottom: 10px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .sr-sess-act { margin-left: 0; width: 100%; }
+}
+
+/* ---------- Лента новостей ---------- */
+.sr-news { display: flex; flex-direction: column; gap: 14px; }
+
+.sr-news-item {
+  padding: 15px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+}
+/* Как и у предложений, анимация только у data-fresh: иначе тихая проверка
+   нового каждые 20 секунд проигрывала бы её у всех элементов подряд. */
+.sr-news-item[data-fresh="1"] { border-color: var(--accent-line); animation: sr-in .25s ease both; }
+
+.sr-news-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+.sr-news-title {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--f-display);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+  color: var(--text);
+}
+.sr-news-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: none;
+}
+.sr-news-time {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ghost);
+}
+
+/* ---------- Вложения новости ---------- */
+.sr-news-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+/* Несколько картинок подряд — сеткой, но одна wide занимает всю ширину
+   целиком: иначе фотографии одной новости выглядят как плитка. */
+.sr-news-gallery:has(> :only-child) { display: block; }
+
+.sr-news-media {
+  margin: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  overflow: hidden;
+}
+.sr-news-media img,
+.sr-news-media video {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Кадр видео не должен раздувать карточку на всю высоту телефона. */
+  max-height: 460px;
+  object-fit: contain;
+  background: #000;
+}
+.sr-news-media figcaption {
+  padding: 7px 10px;
+  border-top: 1px solid var(--border);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.sr-news-media.is-openable { cursor: zoom-in; }
+.sr-news-media.is-openable:hover { border-color: var(--accent-line); }
+.sr-news-media.is-openable:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* ---------- Просмотр вложения во весь экран ---------- */
+.sr-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, .92);
+  cursor: zoom-out;
+}
+.sr-lightbox[hidden] { display: none; }
+.sr-lightbox img,
+.sr-lightbox video {
+  max-width: 100%;
+  max-height: calc(100vh - 32px);
+  object-fit: contain;
+}
+.sr-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, .6);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sr-lightbox-close:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* ---------- Подвал ---------- */
+.sr-foot {
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+  padding: 20px 0 30px;
+}
+.sr-foot-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.sr-foot-in a { color: var(--text-secondary); text-decoration: none; }
+.sr-foot-in a:hover { color: var(--text); }
+.sr-foot-in .sr-r {
+  margin-left: auto;
+  font-family: var(--f-mono);
+  font-size: 10px;
+}
+
+@media (max-width: 560px) {
+  .sr-wrap { padding: 0 18px; }
+}
+@media (max-width: 380px) {
+  .sr-top-in { min-height: 52px; }
+  .sr-brand { font-size: 12px; }
+  .sr-foot-in .sr-r { margin-left: 0; }
+}

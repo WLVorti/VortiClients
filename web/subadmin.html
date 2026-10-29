@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Субадмин · VortiMes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <!-- style.css только ради токенов палитры и шрифтов, все свои классы с префиксом sa- -->
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/subadmin.css">
+  <!-- markdown.css нужен предпросмотру новости: те же .md-правила, что и в ленте -->
+  <link rel="stylesheet" href="css/markdown.css">
+</head>
+<body class="sa-body">
+
+  <!-- ================= ВХОД ================= -->
+  <div class="sa-login" id="saLogin" hidden>
+    <form class="sa-login-card" id="saLoginForm" autocomplete="off">
+      <div class="sa-brand">
+        <span class="sa-brand-mark" aria-hidden="true">V</span>
+        <h1>Субадмин</h1>
+        <span class="sa-brand-sub mono">панель управления опросами</span>
+      </div>
+
+      <label class="sa-field">
+        <span class="sa-label">Пароль</span>
+        <input class="sa-input" type="password" id="saPassword" placeholder="••••••••"
+               autocomplete="current-password" required enterkeyhint="go">
+      </label>
+
+      <p class="sa-msg" id="saLoginMsg" hidden></p>
+
+      <button class="sa-btn sa-btn--primary sa-btn--wide" type="submit" id="saLoginBtn">войти</button>
+      <a class="sa-back" href="/">← на сайт</a>
+    </form>
+  </div>
+
+  <!-- ================= ПАНЕЛЬ ================= -->
+  <div class="sa-wrap" id="saApp" hidden>
+
+    <header class="sa-topbar">
+      <div class="sa-brand sa-brand--row">
+        <span class="sa-brand-mark" aria-hidden="true">V</span>
+        <div>
+          <h1>Субадмин</h1>
+          <span class="sa-brand-sub mono">опросы</span>
+        </div>
+      </div>
+      <div class="sa-topbar-actions">
+        <a class="sa-btn sa-btn--ghost" href="/">на сайт</a>
+        <button class="sa-btn sa-btn--ghost" type="button" id="saLogout">выйти</button>
+      </div>
+    </header>
+
+    <p class="sa-hint">
+      Пока висит активный опрос, <b>у всех на сайте вместо чата — полноэкранный опрос</b>.
+      Одновременно активен один; остальные ждут в очереди и поднимаются, когда вы закроете текущий.
+    </p>
+
+    <!-- ---------- создание опроса ---------- -->
+    <section class="sa-card">
+      <h2 class="sa-card-title">Новый опрос</h2>
+
+      <label class="sa-field">
+        <span class="sa-label">Вопрос</span>
+        <textarea class="sa-input sa-textarea" id="saQuestion" rows="2" maxlength="300"
+                  placeholder="Что опрашиваем?"></textarea>
+      </label>
+
+      <div class="sa-field">
+        <span class="sa-label">Варианты ответа</span>
+        <div id="saOptions"></div>
+        <button class="sa-btn sa-btn--ghost sa-btn--sm" type="button" id="saAddOption">+ вариант</button>
+      </div>
+
+      <label class="sa-check">
+        <input type="checkbox" id="saAllowCustom">
+        <span class="sa-check-box" aria-hidden="true"></span>
+        <span class="sa-check-text">
+          Разрешить «введите свой ответ»
+          <em>проголосовавший выбирает этот пункт и дописывает свой текст — он попадёт в результаты отдельной строкой</em>
+        </span>
+      </label>
+
+      <p class="sa-msg" id="saFormMsg" hidden></p>
+
+      <div class="sa-card-actions">
+        <button class="sa-btn sa-btn--primary" type="button" id="saCreate">создать опрос</button>
+        <span class="sa-hint-inline mono">создастся как черновик — на сайт не пойдёт, пока не нажмёте «запустить»</span>
+      </div>
+    </section>
+
+    <!-- ---------- список ---------- -->
+    <section class="sa-card">
+      <div class="sa-card-head">
+        <h2 class="sa-card-title">Очередь</h2>
+        <button class="sa-btn sa-btn--ghost sa-btn--sm" type="button" id="saRefresh">обновить</button>
+      </div>
+
+      <div class="sa-stats" id="saStats" hidden></div>
+      <div id="saList"></div>
+    </section>
+
+    <!-- ---------- новости площадки ---------- -->
+    <section class="sa-card">
+      <div class="sa-card-head">
+        <h2 class="sa-card-title">Новости «Самореализации»</h2>
+        <span class="sa-hint-inline mono" id="saNewsEditing" hidden>правится черновик</span>
+      </div>
+
+      <p class="sa-hint">
+        Текст — <b>markdown как в обсидиане</b>: <code>## заголовок</code>, <code>**жирный**</code>,
+        <code>*курсив*</code>, <code>~~зачёркнутый~~</code>, <code>==выделение==</code>,
+        <code>- пункт</code>, <code>1. пункт</code>, <code>- [ ] задача</code>,
+        <code>&gt; цитата</code>, <code>|таблица|</code>, <code>[ссылка](адрес)</code>.
+        Нажмите «предпросмотр», чтобы увидеть результат.
+      </p>
+
+      <label class="sa-field">
+        <span class="sa-label">Заголовок</span>
+        <input class="sa-input" type="text" id="saNewsTitle" maxlength="160"
+               placeholder="например: набор 2026 — старт 1 сентября">
+      </label>
+
+      <label class="sa-field">
+        <span class="sa-label">Текст новости (markdown)</span>
+        <textarea class="sa-input sa-textarea sa-md-editor" id="saNewsBody" rows="12" maxlength="20000"
+                  placeholder="## Что нового&#10;&#10;Запись открыта до **15 сентября**."></textarea>
+      </label>
+
+      <!--
+        Вложения грузятся отдельным запросом ДО сохранения: файл сразу
+        получает адрес в /uploads/news и переживает перезагрузку панели,
+        поэтому при пропаже интернета текст не приходится набирать заново.
+      -->
+      <div class="sa-field">
+        <span class="sa-label">Вложения — фото, гифки, видео</span>
+        <div class="sa-news-media-row">
+          <input class="sa-input sa-file" type="file" id="saNewsFile"
+                 accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime">
+          <button class="sa-btn sa-btn--ghost sa-btn--sm" type="button" id="saNewsUpload" disabled>загрузить</button>
+        </div>
+        <p class="sa-hint-inline mono" id="saNewsUploadMsg"></p>
+        <div class="sa-news-files" id="saNewsFiles"></div>
+      </div>
+
+      <label class="sa-check">
+        <input type="checkbox" id="saNewsPublish" checked>
+        <span class="sa-check-box" aria-hidden="true"></span>
+        <span class="sa-check-text">
+          Опубликовать на сайте
+          <em>Снимите галочку — новость сохранится как черновик и в ленте её не будет</em>
+        </span>
+      </label>
+
+      <!-- Предпросмотр рендерится тем же markdown.js, что и лента на сайте:
+           если здесь выглядит правильно, там тоже. -->
+      <div class="sa-news-preview" id="saNewsPreview" hidden>
+        <div class="sa-label">Предпросмотр</div>
+        <div class="md" id="saNewsPreviewBody"></div>
+      </div>
+
+      <p class="sa-msg" id="saNewsMsg" hidden></p>
+
+      <div class="sa-card-actions">
+        <button class="sa-btn sa-btn--primary" type="button" id="saNewsSave">опубликовать</button>
+        <button class="sa-btn sa-btn--ghost" type="button" id="saNewsPreviewBtn">предпросмотр</button>
+        <button class="sa-btn sa-btn--ghost" type="button" id="saNewsCancelEdit" hidden>отменить правку</button>
+        <span class="sa-hint-inline mono" id="saNewsCounter">0 / 20000</span>
+      </div>
+    </section>
+
+    <!-- ---------- список новостей ---------- -->
+    <section class="sa-card">
+      <div class="sa-card-head">
+        <h2 class="sa-card-title">Опубликованные и черновики</h2>
+        <button class="sa-btn sa-btn--ghost sa-btn--sm" type="button" id="saNewsRefresh">обновить</button>
+      </div>
+      <div id="saNewsList"><div class="sa-empty">Загрузка…</div></div>
+    </section>
+
+    <!-- ---------- модерация общего чата ---------- -->
+    <section class="sa-card">
+      <div class="sa-card-head">
+        <h2 class="sa-card-title">Сообщения общего чата</h2>
+        <button class="sa-btn sa-btn--ghost sa-btn--sm" type="button" id="saMsgsRefresh">обновить</button>
+      </div>
+
+      <p class="sa-hint">
+        Удаление <b>мягкое</b>: сообщение заменяется плашкой «удалено администратором»
+        у всех, кто сейчас в общем чате. Запись остаётся в базе — восстановить текст
+        можно только вручную. Можно удалить одно сообщение или выделить несколько.
+      </p>
+
+      <div class="sa-bulkbar" id="saBulkBar" hidden>
+        <span class="sa-bulkbar-count" id="saBulkCount">выбрано 0</span>
+        <button class="sa-btn sa-btn--danger sa-btn--sm" type="button" id="saBulkDelete">
+          удалить выбранные
+        </button>
+        <button class="sa-btn sa-btn--ghost sa-btn--sm" type="button" id="saBulkClear">снять выбор</button>
+      </div>
+
+      <p class="sa-msg" id="saMsgsMsg" hidden></p>
+      <div id="saMessages"><div class="sa-empty">Загрузка…</div></div>
+    </section>
+
+  </div>
+
+  <div class="sa-toast" id="saToast" hidden></div>
+
+  <script src="js/markdown.js"></script>
+  <script src="js/subadmin.js"></script>
+</body>
+</html>
