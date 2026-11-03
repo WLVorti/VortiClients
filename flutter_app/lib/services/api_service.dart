@@ -6,6 +6,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide User;
 import 'package:google_sign_in/google_sign_in.dart';
 import '../models/models.dart';
@@ -14,9 +15,36 @@ import 'theme_provider.dart';
 import 'crypto_service.dart';
 import 'wallpaper_service.dart';
 
+/// Сервер отклонил загрузку файла. [code]:
+///  - `quota_exceeded`  — закончилось место в хранилище (см. [usedBytes]/[quotaBytes]);
+///  - `file_too_large`  — файл больше допустимого размера ([limitBytes]);
+///  - `unsupported_type` — такой тип файла отправлять нельзя.
 class FileTooLargeException implements Exception {
   final String message;
-  FileTooLargeException(this.message);
+  final String code;
+  final int? usedBytes;
+  final int? quotaBytes;
+  final int? limitBytes;
+
+  FileTooLargeException(
+    this.message, {
+    this.code = 'file_too_large',
+    this.usedBytes,
+    this.quotaBytes,
+    this.limitBytes,
+  });
+
+  factory FileTooLargeException.fromResponse(Map<String, dynamic> data) {
+    int? asInt(dynamic value) => value is num ? value.toInt() : null;
+    return FileTooLargeException(
+      (data['message'] as String?) ?? 'Upload rejected',
+      code: (data['code'] as String?) ?? 'file_too_large',
+      usedBytes: asInt(data['usedBytes']),
+      quotaBytes: asInt(data['quotaBytes']),
+      limitBytes: asInt(data['limitBytes']),
+    );
+  }
+
   @override
   String toString() => message;
 }
@@ -24,7 +52,7 @@ class FileTooLargeException implements Exception {
 class ApiService {
   static const String baseUrl = 'https://wlvorti.ru:3000';
   static const String wsUrl = 'wss://wlvorti.ru:3000';
-  static const String appVersion = '1.0.5';
+  static const String appVersion = '1.0.13';
   static final List<String> logs = [];
 
   static String get clientPlatform {
@@ -65,6 +93,7 @@ class ApiService {
   String? _userId;
   String? _fcmToken;
   WebSocketChannel? _wsChannel;
+  String? _activeChatId;
   final List<Function(Map<String, dynamic>)> _messageListeners = [];
   VoidCallback? onDisconnected;
   VoidCallback? onReconnecting;
@@ -102,6 +131,7 @@ class ApiService {
 
   String? get token => _token;
   String? get userId => _userId;
+  String? get activeChatId => _activeChatId;
   Set<String> get onlineUsers => Set.unmodifiable(_onlineUsers);
   bool isUserOnline(String userId) => _onlineUsers.contains(userId);
 
@@ -507,6 +537,9 @@ class ApiService {
   Future<Map<String, dynamic>> signInWithGoogle() async {
     ApiService.addLog('Google sign-in starting...');
     try {
+      // Firebase поднимается в фоне после первого кадра — гарантируем,
+      // что к моменту входа он уже инициализирован.
+      await Firebase.initializeApp();
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
         ApiService.addLog('Google sign-in cancelled by user');
@@ -840,11 +873,12 @@ class ApiService {
   }
 
   Future<List<Message>> getMessages(String chatId,
-      {int limit = 50, int? before, int? after}) async {
+      {int limit = 50, int? before, String? beforeId, int? after}) async {
     final uri = Uri.parse('$baseUrl/chats/$chatId/messages')
         .replace(queryParameters: {
       'limit': limit.toString(),
       if (before != null) 'before': before.toString(),
+      if (beforeId != null) 'beforeId': beforeId,
       if (after != null) 'after': after.toString(),
     });
     final res = await _client.get(uri, headers: _headers);
@@ -901,12 +935,10 @@ class ApiService {
 
           if (msg['type'] == 'connected') {
             CryptoService.uploadPublicKey(this);
-            _wsChannel?.sink.add(
-              jsonEncode({
-                'type': 'clientInfo',
-                ...clientInfoPayload(),
-              }),
-            );
+            // clientInfo уже отправляется через REST при входе/регистрации.
+            // Отдельное WS-сообщение сервер не поддерживает и отвечает
+            // ошибкой "Invalid message format", которую UI показывает как
+            // "Не удалось отправить".
           }
 
           if (msg['type'] == 'keyReceived') {
@@ -1121,18 +1153,30 @@ class ApiService {
   /// Сообщает серверу, какой чат сейчас открыт на экране (или null/undefined,
   /// если ни один чат не открыт). Сервер использует это для решения,
   /// отправлять ли push-уведомление о новых сообщениях.
+  ///
+  /// Важно: сервер не поддерживает тип `activeChat` и отвечает на него
+  /// ошибкой "Invalid message format". Push и так не отправляется, пока у
+  /// пользователя есть открытое WS-соединение, поэтому сейчас это локальное
+  /// состояние без отправки в сокет.
   void setActiveChat(String? chatId) {
-    if (_wsChannel?.sink == null) return;
-    try {
-      _wsChannel!.sink.add(jsonEncode({
-        'type': 'activeChat',
-        'chatId': chatId,
-      }));
-    } catch (_) {}
+    _activeChatId = chatId;
   }
 
   void sendRead(String messageId) {
     _wsChannel?.sink.add(jsonEncode({'type': 'read', 'messageId': messageId}));
+  }
+
+  /// Отмечает прочитанными сразу несколько сообщений одним WS-сообщением.
+  /// Поштучная отправка при открытии чата выстреливала сотней сообщений и
+  /// упиралась в серверный лимит (50 сообщений/сек) — соединение рвалось.
+  void sendReadBatch(Iterable<String> messageIds) {
+    const chunkSize = 200;
+    final ids = messageIds.where((id) => id.isNotEmpty).toList();
+    if (ids.isEmpty) return;
+    for (var i = 0; i < ids.length; i += chunkSize) {
+      final chunk = ids.sublist(i, i + chunkSize > ids.length ? ids.length : i + chunkSize);
+      _wsChannel?.sink.add(jsonEncode({'type': 'read', 'messageIds': chunk}));
+    }
   }
 
   void sendReaction(String messageId, String emoji, String action) {
@@ -1218,10 +1262,8 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 201) {
       return {'fileId': data['fileId'], 'mimeType': contentType};
     }
-    if (response.statusCode == 413) {
-      throw FileTooLargeException(
-        data['message'] as String? ?? 'File too large (max 1 GB)',
-      );
+    if (response.statusCode == 413 || response.statusCode == 415 || response.statusCode == 507) {
+      throw FileTooLargeException.fromResponse(data);
     }
     return null;
   }
@@ -1246,12 +1288,12 @@ class ApiService {
     );
     if (initResp.statusCode != 200) {
       logs.add('[uploadChunked] init failed: ${initResp.statusCode} ${initResp.body}');
-      if (initResp.statusCode == 413) {
-        String msg = 'File too large (max 1 GB)';
+      if (initResp.statusCode == 413 || initResp.statusCode == 415 || initResp.statusCode == 507) {
+        Map<String, dynamic> data = {};
         try {
-          msg = (jsonDecode(initResp.body)['message'] as String?) ?? msg;
+          data = jsonDecode(initResp.body) as Map<String, dynamic>;
         } catch (_) {}
-        throw FileTooLargeException(msg);
+        throw FileTooLargeException.fromResponse(data);
       }
       return null;
     }
@@ -1300,12 +1342,12 @@ class ApiService {
     );
     if (completeResp.statusCode != 200) {
       logs.add('[uploadChunked] complete failed: ${completeResp.statusCode} ${completeResp.body}');
-      if (completeResp.statusCode == 413) {
-        String msg = 'File too large (max 1 GB)';
+      if (completeResp.statusCode == 413 || completeResp.statusCode == 415 || completeResp.statusCode == 507) {
+        Map<String, dynamic> data = {};
         try {
-          msg = (jsonDecode(completeResp.body)['message'] as String?) ?? msg;
+          data = jsonDecode(completeResp.body) as Map<String, dynamic>;
         } catch (_) {}
-        throw FileTooLargeException(msg);
+        throw FileTooLargeException.fromResponse(data);
       }
       return null;
     }

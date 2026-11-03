@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
-import '../services/chat_cache.dart';
+import '../services/chat_storage.dart';
 import '../services/mute_service.dart';
 import '../models/models.dart';
 import '../utils/avatar_utils.dart';
@@ -35,13 +35,19 @@ class _ChatsScreenState extends State<ChatsScreen> {
   @override
   void initState() {
     super.initState();
-    final cached = ChatCache.getChats();
-    if (cached.isNotEmpty) {
-      _chats = cached;
-      _isLoading = false;
-    }
+    _loadCachedChats();
     _loadData();
     _setupWebSocket();
+  }
+
+  /// Сначала показываем список чатов с диска, сеть подтягивается следом.
+  Future<void> _loadCachedChats() async {
+    final cached = await ChatStorage.loadChats();
+    if (cached.isEmpty || !mounted) return;
+    setState(() {
+      _chats = cached.where((c) => c.type != 'saved').toList();
+      _isLoading = false;
+    });
   }
 
   Future<void> _loadData() async {
@@ -71,7 +77,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
         });
         print('[ChatsScreen] _chats set with ${_chats.length} items');
         // Cache the fresh data
-        ChatCache.saveChats(chats);
+        await ChatStorage.saveChats(chats);
 
         // Загружаем счётчики непрочитанных
         final unread = await widget.api.getUnreadCounts();

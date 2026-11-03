@@ -315,8 +315,10 @@ class Message {
       userId: json['user_id'] ?? '',
       text: json['text'] ?? '',
       replyTo: json['reply_to'] ?? replyData?['replyId'],
-      replyText: replyData?['replyText'],
-      replyUsername: replyData?['replyUser'],
+      // reply_text/reply_username приходят из локального кэша (Message.toJson),
+      // replyText/replyUser — из ответа сервера.
+      replyText: json['reply_text'] ?? replyData?['replyText'],
+      replyUsername: json['reply_username'] ?? replyData?['replyUser'],
       fileId: json['file_id'],
       fileMimeType: json['file_mime_type'],
       stickerId: json['sticker_id'] ?? json['stickerId'],

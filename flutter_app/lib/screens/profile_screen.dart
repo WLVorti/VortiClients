@@ -7,6 +7,7 @@ import 'package:image_cropper_widget/image_cropper_widget.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
+import '../services/chat_storage.dart';
 import '../utils/avatar_utils.dart';
 import '../services/theme_provider.dart';
 import '../services/locale_provider.dart';
@@ -706,6 +707,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 );
                 if (confirmed == true) {
+                  // Локальная история привязана к аккаунту — стираем при выходе.
+                  await ChatStorage.clearAll();
                   await widget.api.clearCredentials();
                   widget.api.disconnect();
                   if (mounted) {

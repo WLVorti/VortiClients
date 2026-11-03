@@ -24,7 +24,7 @@ import '../utils/kolobok_utils.dart';
 import '../utils/save_file_utils.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
-import '../services/message_cache.dart';
+import '../services/chat_storage.dart';
 import '../services/mute_service.dart';
 import '../services/crypto_service.dart';
 import '../services/wallpaper_service.dart';
@@ -183,12 +183,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     widget.api.setActiveChat(widget.chatId);
   }
 
+  /// Единый порядок сообщений: по времени, при равенстве — по id.
+  /// Тот же порядок использует сервер при пагинации, иначе на границе
+  /// страниц теряются сообщения с одинаковым created_at.
+  static int _compareMessages(Message a, Message b) {
+    final byTime = a.createdAt.compareTo(b.createdAt);
+    return byTime != 0 ? byTime : a.id.compareTo(b.id);
+  }
+
   Future<void> _loadCachedMessages() async {
     try {
-      final cached = await MessageCache.getMessages(widget.chatId);
+      final cached = await ChatStorage.loadMessages(
+        widget.chatId,
+        limit: ChatStorage.openPageSize,
+      );
       if (cached.isEmpty || !mounted) return;
       setState(() {
-        for (final m in cached.reversed) {
+        for (final m in cached) {
           if (!_messages.any((e) => e.id == m.id)) {
             if (m.plainText != null && m.keyType == 'e2ee_v1') {
               _decryptedTexts[m.id] = m.plainText!;
@@ -197,6 +208,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             if (m.plainText == null) _decryptMessage(m);
           }
         }
+        _messages.sort(_compareMessages);
         if (!_messagesLoaded) {
           _isLoading = false;
         }
@@ -234,10 +246,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _flushReadReceipts() {
     if (_pendingReadIds.isEmpty) return;
     if (!_isNearBottom) return;
-    for (final id in _pendingReadIds) {
-      widget.api.sendRead(id);
-      _readMessages.add(id);
-    }
+    // Одним WS-сообщением: по одному в сокет нельзя — сервер разрывает
+    // соединение при >50 сообщениях в секунду.
+    widget.api.sendReadBatch(_pendingReadIds);
+    _readMessages.addAll(_pendingReadIds);
     _pendingReadIds.clear();
     widget.onMessagesRead?.call();
   }
@@ -436,11 +448,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             _removeUploadTemp(tempId);
           }
         } catch (e) {
-          if (e is FileTooLargeException) {
-            _showSnackBar(AppLocalizations.of(context).fileTooLarge);
-          } else {
-            _showSnackBar(AppLocalizations.of(context).uploadFailed);
-          }
+          _showSnackBar(_uploadErrorText(e));
           _removeUploadTemp(tempId);
         }
 
@@ -551,7 +559,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             final idx = _messages.indexWhere((m) => m.id == msg.id);
             if (idx != -1) {
               _messages[idx] = _messages[idx].copyWith(plainText: plain);
-              MessageCache.saveMessage(_messages[idx]);
+              ChatStorage.saveMessage(_messages[idx]);
             }
           });
         }
@@ -693,7 +701,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
       // 4) Add the real message once
       _insertMessageSorted(message);
-      MessageCache.saveMessage(message);
+      ChatStorage.saveMessage(message);
 
       // 5) Mark for read receipts
       if (userId != _currentUserId) {
@@ -714,15 +722,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _handleMessageEdit(Map<String, dynamic> msg) {
+    Message? edited;
     setState(() {
       final index = _messages.indexWhere((m) => m.id == msg['messageId']);
       if (index != -1) {
-        _messages[index] = _messages[index].copyWith(
+        edited = _messages[index].copyWith(
           text: msg['newText'] ?? _messages[index].text,
           isEdited: true,
         );
+        _messages[index] = edited!;
       }
     });
+    final updated = edited;
+    if (updated != null) {
+      ChatStorage.saveMessage(updated);
+    }
   }
 
   void _handleMessageDelete(Map<String, dynamic> msg) {
@@ -731,12 +745,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final index = _messages.indexWhere((m) => m.id == deletedId);
       if (index != -1) {
         _messages[index] = _messages[index].copyWith(text: '[deleted]');
-        MessageCache.saveMessage(_messages[index]);
+        ChatStorage.saveMessage(_messages[index]);
       }
       for (int i = 0; i < _messages.length; i++) {
         if (_messages[i].replyTo == deletedId) {
           _messages[i] = _messages[i].copyWith(replyText: '[deleted]');
-          MessageCache.saveMessage(_messages[i]);
+          ChatStorage.saveMessage(_messages[i]);
         }
       }
     });
@@ -745,9 +759,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _handleErrorMessage(Map<String, dynamic> msg) {
     final errorMsg = msg['message'] as String? ?? 'Ошибка отправки';
     final failedTempId = msg['tempId'] as String?;
+    final errorChatId = msg['chatId'] as String?;
 
     ApiService.addLog(
-      '_handleErrorMessage: chatId=${widget.chatId} tempId=$failedTempId error=$errorMsg',
+      '_handleErrorMessage: chatId=${widget.chatId} errorChatId=$errorChatId '
+      'tempId=$failedTempId error=$errorMsg',
     );
 
     if (failedTempId != null && mounted) {
@@ -783,7 +799,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     }
 
-    _showSnackBar('${AppLocalizations.of(context).failedToSend}: $errorMsg');
+    // Показываем "Не удалось отправить" только для ошибок отправки в этот чат.
+    // Общие серверные ошибки (например, "Invalid message format") не должны
+    // выглядеть как неудачная отправка сообщения.
+    final belongsToThisChat = errorChatId == null || errorChatId == widget.chatId;
+    final isSendError = failedTempId != null || errorChatId != null;
+    if (isSendError && belongsToThisChat) {
+      _showSnackBar('${AppLocalizations.of(context).failedToSend}: $errorMsg');
+    }
   }
 
   void _handleOnlineStatus(Map<String, dynamic> msg) {
@@ -803,7 +826,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           status: MessageStatus.delivered,
         );
       });
-      MessageCache.saveMessage(_messages[index]);
+      ChatStorage.saveMessage(_messages[index]);
     }
   }
 
@@ -818,7 +841,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           status: MessageStatus.read,
         );
       });
-      MessageCache.saveMessage(_messages[index]);
+      ChatStorage.saveMessage(_messages[index]);
     }
     setState(() => _readMessages.add(messageId));
   }
@@ -856,74 +879,66 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _loadMessages() async {
     if (_messagesLoaded) return;
     try {
-      // Догружаем с сервера только сообщения новее последнего из кэша,
-      // чтобы чат открывался мгновенно из памяти, а сеть тратилась лишь на дельту.
-      final latestCached =
-          _messages.isNotEmpty ? _messages.last.createdAt : null;
-      final messages = latestCached != null
-          ? await widget.api.getMessages(
-              widget.chatId,
-              after: latestCached,
-              limit: 100,
-            )
-          : await widget.api.getMessages(widget.chatId);
-      if (mounted) {
-        setState(() {
-          final now = DateTime.now().millisecondsSinceEpoch;
-          for (final m in messages) {
-            // Skip own messages that still have a pending optimistic counterpart
-            if (m.userId == _currentUserId &&
-                _messages.any(
-                  (o) =>
-                      o.userId == _currentUserId &&
-                      o.status == MessageStatus.sending &&
-                      o.text == m.text &&
-                      (now - o.createdAt).abs() < 10000,
-                ))
-              continue;
+      // Всегда берём свежую страницу с сервера и сливаем её с тем, что уже
+      // показано с диска. Так не теряются сообщения, пришедшие пока приложение
+      // было закрыто, и подхватываются правки и статусы доставки.
+      final messages = await widget.api.getMessages(
+        widget.chatId,
+        limit: ChatStorage.openPageSize,
+      );
+      if (!mounted) return;
 
-            final index = _messages.indexWhere(
-              (existing) => existing.id == m.id,
-            );
-            if (index != -1) {
-              if (m.status.index > _messages[index].status.index) {
-                _messages[index] = _messages[index].copyWith(status: m.status);
-              }
-            } else {
-              _messages.add(m);
-            }
+      setState(() {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        for (final m in messages) {
+          // Своё сообщение, которое ещё висит оптимистичным, не дублируем.
+          if (m.userId == _currentUserId &&
+              _messages.any(
+                (o) =>
+                    o.userId == _currentUserId &&
+                    o.status == MessageStatus.sending &&
+                    o.text == m.text &&
+                    (now - o.createdAt).abs() < 10000,
+              )) {
+            continue;
           }
-          _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-          _isLoading = false;
-          _messagesLoaded = true;
-          if (latestCached == null) {
-            _hasOlderMessages = messages.length >= 50;
+
+          final index = _messages.indexWhere((existing) => existing.id == m.id);
+          if (index != -1) {
+            final existing = _messages[index];
+            if (m.status.index > existing.status.index) {
+              _messages[index] = existing.copyWith(status: m.status);
+            }
           } else {
-            _hasOlderMessages = true;
+            _messages.add(m);
           }
-
-          for (final m in messages) {
-            if (m.userId != _currentUserId && !_readMessages.contains(m.id)) {
-              _pendingReadIds.add(m.id);
-            }
-          }
-          final hasUnread = _pendingReadIds.isNotEmpty;
-          if (hasUnread) {
-            widget.onMessagesRead?.call();
-          }
-        });
+        }
+        _messages.sort(_compareMessages);
+        _isLoading = false;
+        _messagesLoaded = true;
+        _hasOlderMessages = messages.length >= ChatStorage.openPageSize;
 
         for (final m in messages) {
-          _decryptMessage(m);
+          if (m.userId != _currentUserId && !_readMessages.contains(m.id)) {
+            _pendingReadIds.add(m.id);
+          }
         }
-
-        MessageCache.saveMessages(widget.chatId, messages);
-        _scrollToBottom(force: true);
         if (_pendingReadIds.isNotEmpty) {
-          _scheduleReadReceipts();
+          widget.onMessagesRead?.call();
         }
+      });
+
+      for (final m in messages) {
+        _decryptMessage(m);
+      }
+
+      await ChatStorage.saveMessages(widget.chatId, messages);
+      _scrollToBottom(force: true);
+      if (_pendingReadIds.isNotEmpty) {
+        _scheduleReadReceipts();
       }
     } catch (e) {
+      // Нет сети — остаёмся на том, что уже прочитали с диска.
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -952,7 +967,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         if (index != -1) {
           if (m.status.index > _messages[index].status.index) {
             _messages[index] = _messages[index].copyWith(status: m.status);
-            MessageCache.saveMessage(_messages[index]);
+            ChatStorage.saveMessage(_messages[index]);
           }
         } else {
           toAdd.add(m);
@@ -981,7 +996,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (actuallyAdded.any((m) => m.userId != _currentUserId)) {
         widget.onMessagesRead?.call();
       }
-MessageCache.saveMessages(widget.chatId, actuallyAdded);
+      await ChatStorage.saveMessages(widget.chatId, actuallyAdded);
     if (_isNearBottom) _scrollToBottom(force: true);
     } catch (_) {}
   }
@@ -989,35 +1004,67 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
   Future<void> _loadMoreMessages() async {
     if (_isLoadingMore || !_hasOlderMessages) return;
     _isLoadingMore = true;
-    final oldest = _messages.isEmpty ? null : _messages.first.createdAt;
+
+    final oldest = _messages.isEmpty ? null : _messages.first;
+    final beforeCreatedAt = oldest?.createdAt;
+    final beforeId = oldest?.id;
+    var cacheHadFullPage = false;
+
     try {
-      final messages = await widget.api.getMessages(
+      // 1) Сначала добираем страницу с диска — это мгновенно и не зависит от сети.
+      final cached = await ChatStorage.loadMessages(
         widget.chatId,
-        before: oldest,
-        limit: 50,
+        limit: ChatStorage.olderPageSize,
+        beforeCreatedAt: beforeCreatedAt,
+        beforeId: beforeId,
       );
-      final toInsert = <Message>[];
-      for (final m in messages) {
-        if (!_messages.any((existing) => existing.id == m.id)) {
-          toInsert.add(m);
+      final cachedNew = cached
+          .where((m) => !_messages.any((existing) => existing.id == m.id))
+          .toList();
+      if (!mounted) return;
+      if (cachedNew.isNotEmpty) {
+        setState(() {
+          cachedNew.sort(_compareMessages);
+          _messages.insertAll(0, cachedNew);
+        });
+        for (final m in cachedNew) {
+          _decryptMessage(m);
         }
       }
-      if (mounted) {
-        setState(() {
-          _hasOlderMessages = messages.length >= 50;
-          if (toInsert.isNotEmpty) {
-            toInsert.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-            _messages.insertAll(0, toInsert);
-          }
-          _isLoadingMore = false;
-        });
-      }
+      cacheHadFullPage = cachedNew.length >= ChatStorage.olderPageSize;
+      if (cacheHadFullPage) return;
+
+      // 2) Локальная история закончилась — дочитываем с сервера.
+      final messages = await widget.api.getMessages(
+        widget.chatId,
+        before: beforeCreatedAt,
+        beforeId: beforeId,
+        limit: ChatStorage.olderPageSize,
+      );
+      final toInsert = messages
+          .where((m) => !_messages.any((existing) => existing.id == m.id))
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _hasOlderMessages = messages.length >= ChatStorage.olderPageSize;
+        if (toInsert.isNotEmpty) {
+          toInsert.sort(_compareMessages);
+          _messages.insertAll(0, toInsert);
+        }
+      });
       for (final m in toInsert) {
         _decryptMessage(m);
       }
-      MessageCache.saveMessages(widget.chatId, toInsert);
+      await ChatStorage.saveMessages(widget.chatId, messages);
     } catch (e) {
-      if (mounted) setState(() => _isLoadingMore = false);
+      // Нет сети. Если и на диске истории больше нет — подгружать нечего.
+      if (mounted && !cacheHadFullPage) {
+        setState(() => _hasOlderMessages = false);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+      }
     }
   }
 
@@ -1099,16 +1146,19 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
       });
       try {
         final fileSize = await _pendingFile!.length();
-        if (fileSize > 1024 * 1024 * 1024) {
-          _showSnackBar(AppLocalizations.of(context).fileTooLarge);
+        final isVideo = _pendingFileMimeType != null &&
+            _pendingFileMimeType!.startsWith('video/');
+        final useChunked = isVideo && fileSize > 5 * 1024 * 1024;
+        // Обычная загрузка ограничена 100 МБ на файл, большие видео идут
+        // чанками и упираются только в квоту хранилища.
+        final maxBytes = useChunked ? 1024 * 1024 * 1024 : 100 * 1024 * 1024;
+        if (fileSize > maxBytes) {
+          final l = AppLocalizations.of(context);
+          _showSnackBar(l.fileTooLargeLimit(l.formatSize(maxBytes)));
           _removeUploadTemp(tempId);
           setState(() => _isUploading = false);
           return;
         }
-        final useChunked =
-            _pendingFileMimeType != null &&
-            _pendingFileMimeType!.startsWith('video/') &&
-            fileSize > 5 * 1024 * 1024;
         void report(double p) => _reportUploadProgress(tempId, p);
         final uploadResult = useChunked
             ? await widget.api.uploadFileChunked(
@@ -1147,11 +1197,7 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
           return;
         }
       } catch (e) {
-        if (e is FileTooLargeException) {
-          _showSnackBar(AppLocalizations.of(context).fileTooLarge);
-        } else {
-          _showSnackBar(AppLocalizations.of(context).uploadFailed);
-        }
+        _showSnackBar(_uploadErrorText(e));
         _removeUploadTemp(tempId);
         setState(() => _isUploading = false);
         return;
@@ -1442,7 +1488,7 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
           final index = _messages.indexWhere((m) => m.id == msg.id);
           if (index != -1) {
             _messages[index] = _messages[index].copyWith(text: '[deleted]');
-            MessageCache.saveMessage(_messages[index]);
+            ChatStorage.saveMessage(_messages[index]);
           }
         });
       }
@@ -1468,13 +1514,14 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
       });
       try {
         final fileSize = await media.file.length();
-        if (fileSize > 1024 * 1024 * 1024) {
-          errors.add(l.fileTooLarge);
+        final useChunked =
+            media.mimeType.startsWith('video/') && fileSize > 5 * 1024 * 1024;
+        final maxBytes = useChunked ? 1024 * 1024 * 1024 : 100 * 1024 * 1024;
+        if (fileSize > maxBytes) {
+          errors.add(l.fileTooLargeLimit(l.formatSize(maxBytes)));
           _removeUploadTemp(tempId);
           continue;
         }
-        final useChunked =
-            media.mimeType.startsWith('video/') && fileSize > 5 * 1024 * 1024;
         final api = widget.api;
         void report(double p) => _reportUploadProgress(tempId, p);
 
@@ -1501,11 +1548,7 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
           _removeUploadTemp(tempId);
         }
       } catch (e) {
-        if (e is FileTooLargeException) {
-          errors.add(l.fileTooLarge);
-        } else {
-          errors.add(l.uploadFailed);
-        }
+        errors.add(_uploadErrorText(e));
         _removeUploadTemp(tempId);
       }
     }
@@ -1686,6 +1729,12 @@ MessageCache.saveMessages(widget.chatId, actuallyAdded);
       SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
+
+  /// Текст ошибки загрузки. Раньше на любой 413 показывалось
+  /// «Слишком большой файл, лимит 1 ГБ» — даже когда закончилось место
+  /// в хранилище и файл был 450 КБ. Теперь показываем реальную причину.
+  String _uploadErrorText(Object error) =>
+      AppLocalizations.of(context).uploadErrorText(error);
 
   @override
   void dispose() {

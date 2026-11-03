@@ -167,15 +167,15 @@ class _ShareForwardScreenState extends State<ShareForwardScreen> {
     } catch (e) {
       ok = false;
       if (mounted) {
-        if (e is FileTooLargeException) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(AppLocalizations.of(context).fileTooLarge)),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(AppLocalizations.of(context).failedToSend)),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e is FileTooLargeException
+                  ? AppLocalizations.of(context).uploadErrorText(e)
+                  : AppLocalizations.of(context).failedToSend,
+            ),
+          ),
+        );
       }
     } finally {
       _cleanupFiles();

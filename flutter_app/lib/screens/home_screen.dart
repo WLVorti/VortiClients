@@ -2,17 +2,15 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import '../services/chat_cache.dart';
+import '../services/chat_storage.dart';
 import '../services/hidden_chats.dart';
 import '../services/mute_service.dart';
-import '../services/theme_provider.dart';
 import '../l10n/app_localizations.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/models.dart';
 import '../utils/avatar_utils.dart';
 import '../utils/kolobok_utils.dart';
 import 'chat_screen.dart';
-import 'auth_screen.dart';
 import 'profile_screen.dart';
 import 'user_profile_screen.dart';
 import 'group_info_screen.dart';
@@ -153,13 +151,23 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    final cached = ChatCache.getChats();
-    if (cached.isNotEmpty) {
+    // Сначала показываем кэш с диска, и только потом лезем в сеть.
+    _loadCachedChats();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadData();
+      _setupWebSocket();
+    });
+  }
+
+  /// Список чатов с диска показываем сразу, не дожидаясь сети.
+  Future<void> _loadCachedChats() async {
+    final cached = await ChatStorage.loadChats();
+    if (cached.isEmpty || !mounted) return;
+    setState(() {
       _chats = _filterChats(cached);
       _isLoading = false;
-    }
-    _loadData();
-    _setupWebSocket();
+    });
   }
 
   @override
@@ -183,15 +191,31 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       widget.api.reconnectWebSocket();
       _loadData();
+    } else if (state == AppLifecycleState.paused) {
+      // Не теряем последние сообщения, если система убьёт приложение.
+      unawaited(ChatStorage.flushPending());
     }
   }
 
   Future<void> _loadData() async {
     try {
-      String? savedId = await widget.api.getOrCreateSavedChat();
-      final chats = await widget.api.getChats();
-      savedId ??= chats.where((c) => c.type == 'saved').firstOrNull?.id;
-      await ChatCache.saveChats(chats);
+      // Три независимых запроса идут параллельно: раньше список чатов ждал
+      // "Избранное", потом счётчики непрочитанных — экран пустовал лишние
+      // сетевые раунд-трипы.
+      final results = await Future.wait<Object?>([
+        widget.api.getOrCreateSavedChat(),
+        widget.api.getChats(),
+        widget.api.getUnreadCounts(),
+      ]);
+      final savedFromApi = results[0] as String?;
+      final chats = results[1] as List<Chat>;
+      final unread = results[2] as Map<String, int>;
+      final savedId =
+          savedFromApi ?? chats.where((c) => c.type == 'saved').firstOrNull?.id;
+
+      // Кэш пишется в фоне и не задерживает отрисовку.
+      unawaited(ChatStorage.saveChats(chats));
+
       if (mounted) {
         setState(() {
           _savedChatId = savedId;
@@ -203,15 +227,9 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
             _savedLastMessageAt = savedChat?.lastMessageAt;
             _savedLastMessageKeyType = savedChat?.lastMessageKeyType;
           }
+          _unreadCounts.clear();
+          _unreadCounts.addAll(unread);
         });
-
-        final unread = await widget.api.getUnreadCounts();
-        if (mounted) {
-          setState(() {
-            _unreadCounts.clear();
-            _unreadCounts.addAll(unread);
-          });
-        }
       }
     } catch (e) {
       if (mounted) {
@@ -668,9 +686,8 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
             onPressed: () async {
               Navigator.pop(ctx);
               await HiddenChats.hide(chat.id);
-              final cached = ChatCache.getChats();
-              cached.removeWhere((c) => c.id == chat.id);
-              await ChatCache.saveChats(cached);
+              await ChatStorage.deleteChat(chat.id);
+              await ChatStorage.deleteChatMessages(chat.id);
               if (mounted) {
                 setState(() {
                   _chats.removeWhere((c) => c.id == chat.id);

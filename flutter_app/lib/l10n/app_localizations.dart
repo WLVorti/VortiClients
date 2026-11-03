@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import '../services/api_service.dart';
 
 class AppLocalizations {
   final Locale locale;
@@ -84,7 +85,56 @@ class AppLocalizations {
   String get logsCopied => isRu ? 'Логи скопированы' : 'Logs copied to clipboard';
   String get entries => isRu ? 'записей' : 'entries';
   String get failedToSend => isRu ? 'Не удалось отправить' : 'Failed to send';
-  String get fileTooLarge => isRu ? 'Слишком большой файл, лимит 1 ГБ' : 'File too large, limit 1GB';
+  String get fileTooLarge => isRu ? 'Файл слишком большой' : 'File too large';
+  String fileTooLargeLimit(String limit) => isRu
+      ? 'Файл слишком большой, максимум $limit'
+      : 'File too large, max $limit';
+  String storageFull(String used, String quota) => isRu
+      ? 'Хранилище заполнено: занято $used из $quota. Удалите старые файлы.'
+      : 'Storage full: $used of $quota used. Delete old files.';
+  String get storageFullGeneric => isRu
+      ? 'Хранилище заполнено. Удалите старые файлы.'
+      : 'Storage is full. Delete old files.';
+  String get fileTypeNotAllowed =>
+      isRu ? 'Такой тип файла нельзя отправить' : 'This file type is not allowed';
+  String get serverStorageLow => isRu
+      ? 'На сервере закончилось место. Попробуйте позже.'
+      : 'Server storage is full. Try again later.';
+  String formatSize(int bytes) {
+    const kb = 1024;
+    const mb = 1024 * kb;
+    const gb = 1024 * mb;
+    if (bytes >= gb) {
+      final value = bytes / gb;
+      return '${value.toStringAsFixed(value >= 10 ? 0 : 1)} ${isRu ? 'ГБ' : 'GB'}';
+    }
+    if (bytes >= mb) {
+      final value = bytes / mb;
+      return '${value.toStringAsFixed(value >= 10 ? 0 : 1)} ${isRu ? 'МБ' : 'MB'}';
+    }
+    return '${(bytes / kb).toStringAsFixed(0)} ${isRu ? 'КБ' : 'KB'}';
+  }
+
+  /// Текст ошибки загрузки файла. Сервер объясняет причину (квота,
+  /// размер, тип), и мы показываем её с реальными цифрами вместо
+  /// захардкоженного «лимит 1 ГБ».
+  String uploadErrorText(Object error) {
+    if (error is FileTooLargeException) {
+      if (error.code == 'quota_exceeded') {
+        final used = error.usedBytes;
+        final quota = error.quotaBytes;
+        if (used != null && quota != null) {
+          return storageFull(formatSize(used), formatSize(quota));
+        }
+        return storageFullGeneric;
+      }
+      if (error.code == 'unsupported_type') return fileTypeNotAllowed;
+      if (error.code == 'server_storage_low') return serverStorageLow;
+      final limit = error.limitBytes;
+      return limit != null ? fileTooLargeLimit(formatSize(limit)) : fileTooLarge;
+    }
+    return uploadFailed;
+  }
   String get uploadFailed => isRu ? 'Ошибка загрузки' : 'Upload failed';
   String get messageTooLong => isRu ? 'Сообщение слишком длинное' : 'Message too long';
   String get editMessageHint => isRu ? 'Редактировать сообщение...' : 'Edit message...';

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'services/api_service.dart';
@@ -8,8 +7,7 @@ import 'services/theme_provider.dart';
 import 'services/locale_provider.dart';
 import 'services/notification_service.dart';
 import 'services/mute_service.dart';
-import 'services/message_cache.dart';
-import 'services/chat_cache.dart';
+import 'services/chat_storage.dart';
 import 'services/hidden_chats.dart';
 import 'services/crypto_service.dart';
 import 'services/wallpaper_service.dart';
@@ -24,40 +22,80 @@ import 'screens/share_forward_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  ApiService.addLog('Firebase.initializeApp() starting...');
-  await Firebase.initializeApp();
-  ApiService.addLog('Firebase.initializeApp() done');
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  // До первого кадра грузим только то, без чего нельзя решить, какой экран
+  // показывать (токен), и отрисовать его в нужной теме. Всё остальное —
+  // Firebase, пуши, E2EE, WebSocket — поднимается уже в фоне с экрана чатов.
+  ApiService.init();
+  final api = ApiService();
 
-  await MessageCache.init();
-  await ChatCache.init();
-  await HiddenChats.init();
+  try {
+    await api.loadCredentials().timeout(const Duration(seconds: 5));
+    if (api.token != null && await api.isSessionExpired()) {
+      ApiService.addLog(
+        'startup: session expired by inactivity, clearing credentials',
+      );
+      await api.clearCredentials();
+    }
+  } catch (e) {
+    ApiService.addLog('startup: credentials error: $e');
+  }
 
-  runApp(const VortiApp());
+  ThemeProvider().setCurrentUser(api.userId);
+  WallpaperService().setCurrentUser(api.userId);
+  try {
+    await ThemeProvider().loadTheme();
+    await LocaleProvider().loadLocale();
+  } catch (e) {
+    ApiService.addLog('startup: theme/locale error: $e');
+  }
+
+  try {
+    // Кэш чатов читается сразу с диска при старте HomeScreen.
+    await ChatStorage.init();
+    await HiddenChats.init();
+  } catch (e) {
+    ApiService.addLog('startup: local storage error: $e');
+  }
+
+  runApp(VortiApp(api: api));
 }
 
 class VortiApp extends StatefulWidget {
-  const VortiApp({super.key});
+  final ApiService api;
+
+  const VortiApp({super.key, required this.api});
 
   @override
   State<VortiApp> createState() => _VortiAppState();
 }
 
 class _VortiAppState extends State<VortiApp> {
-  final _api = ApiService();
-  final _notifications = NotificationService();
-  bool _isLoading = true;
-  String? _pendingResetToken;
+  ApiService get _api => widget.api;
+  // Создаётся лениво: NotificationService нельзя трогать до Firebase.
+  late final _notifications = NotificationService();
   final _navigatorKey = GlobalKey<NavigatorState>();
   Future<void> _shareInit = Future.value();
+  StreamSubscription<String?>? _tokenSubscription;
 
   @override
   void initState() {
     super.initState();
-    ApiService.init();
+    // Кэш истории всегда относится к текущему аккаунту.
+    ChatStorage.ownerResolver = () => _api.userId;
+
+    _api.onAuthExpired = () {
+      if (mounted) setState(() {});
+    };
+    if (_api.token != null) _api.updateLastActive();
+
     _shareInit = ShareReceiver.init(_handleSharedContent);
-    _checkAuth();
     DeepLinkService().init(_handleDeepLink);
+
+    // Экран чатов уже строится из аргументов main(), а подключение,
+    // пуши и остальная инициализация идут следом, не блокируя вход.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_initInBackground());
+    });
   }
 
   void _handleSharedContent(SharedContent content) {
@@ -80,13 +118,10 @@ class _VortiAppState extends State<VortiApp> {
       final m = RegExp(r'[?&]token=([^&]+)').firstMatch(uri.toString());
       token = m?.group(1);
     }
-    if (token == null || token.isEmpty || !mounted || _api.token != null)
+    if (token == null || token.isEmpty || !mounted || _api.token != null) {
       return;
-    if (_isLoading) {
-      _pendingResetToken = token;
-    } else {
-      _showResetPasswordFromDeepLink(token);
     }
+    _showResetPasswordFromDeepLink(token);
   }
 
   void _showResetPasswordFromDeepLink(String token) {
@@ -96,86 +131,63 @@ class _VortiAppState extends State<VortiApp> {
     });
   }
 
-  Future<void> _checkAuth() async {
+  Future<void> _initInBackground() async {
+    // Всё локальное и необязательное для первого экрана.
     try {
-      ApiService.addLog('_checkAuth: loading credentials...');
-      await _api.loadCredentials().timeout(const Duration(seconds: 10));
-      ApiService.addLog('_checkAuth: credentials loaded');
-
-      // Check if session expired due to inactivity (> 6 months)
-      if (_api.token != null) {
-        final expired = await _api.isSessionExpired();
-        if (expired) {
-          ApiService.addLog(
-            '_checkAuth: session expired by inactivity, clearing credentials',
-          );
-          _api.clearCredentials();
-        }
-      }
-
-      ApiService.addLog('_checkAuth: saved token=${_api.token != null}');
-      ThemeProvider().setCurrentUser(_api.userId);
-      WallpaperService().setCurrentUser(_api.userId);
-      ApiService.addLog('_checkAuth: loading theme...');
-      await ThemeProvider().loadTheme();
       await WallpaperService().load();
-      ApiService.addLog('_checkAuth: theme loaded');
-      ApiService.addLog('_checkAuth: loading locale...');
-      await LocaleProvider().loadLocale();
-      ApiService.addLog('_checkAuth: locale loaded');
-      ApiService.addLog('_checkAuth: initializing MuteService...');
       await MuteService.init();
-      ApiService.addLog('_checkAuth: MuteService done');
       MuteService.setApi(_api);
-      ApiService.addLog('_checkAuth: initializing notifications...');
-      await _initNotifications();
-      ApiService.addLog('_checkAuth: notifications done');
     } catch (e) {
-      ApiService.addLog('_checkAuth error: $e');
+      ApiService.addLog('background init: local services error: $e');
     }
 
-    _api.onAuthExpired = () {
-      if (mounted) setState(() {});
-    };
-
+    // E2EE-ключ нужен до первого отправленного сообщения, но не до входа.
     if (_api.token != null) {
-      _api.updateLastActive();
+      try {
+        await CryptoService.initForUser(_api.userId!);
+        ApiService.addLog('background init: E2EE ready=${CryptoService.isReady}');
+      } catch (e) {
+        ApiService.addLog('background init: E2EE error: $e');
+      }
     }
 
-    if (mounted) {
-      setState(() => _isLoading = false);
-    }
-
-    if (_pendingResetToken != null && mounted && _api.token == null) {
-      final t = _pendingResetToken!;
-      _pendingResetToken = null;
-      _showResetPasswordFromDeepLink(t);
-    }
-
-    // Load E2EE key if cached
-    if (_api.token != null && mounted) {
-      await CryptoService.initForUser(_api.userId!);
-      ApiService.addLog('_checkAuth: E2EE init result=${CryptoService.isReady}');
-    }
+    // Firebase и пуши — самый долгий этап, поэтому строго после первого кадра.
+    await _initFirebaseAndNotifications();
 
     // Consume share payload received at cold start (opened via "Share")
-    if (_api.token != null && mounted) {
-      await _shareInit;
-      final initial = ShareReceiver.takeInitial();
-      if (initial != null && !initial.isEmpty) {
-        _handleSharedContent(initial);
-        await ShareReceiver.clear();
+    if (_api.token != null) {
+      try {
+        await _shareInit;
+        final initial = ShareReceiver.takeInitial();
+        if (initial != null && !initial.isEmpty && mounted) {
+          _handleSharedContent(initial);
+          await ShareReceiver.clear();
+        }
+      } catch (e) {
+        ApiService.addLog('background init: share error: $e');
       }
     }
   }
 
-  StreamSubscription<String?>? _tokenSubscription;
+  Future<void> _initFirebaseAndNotifications() async {
+    try {
+      ApiService.addLog('Firebase.initializeApp() starting...');
+      await Firebase.initializeApp();
+      ApiService.addLog('Firebase.initializeApp() done');
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-  Future<void> _initNotifications() async {
-    ApiService.addLog('_initNotifications: initialize()...');
-    await _notifications.initialize();
-    ApiService.addLog('_initNotifications: initialize() done');
+      ApiService.addLog('_initNotifications: initialize()...');
+      await _notifications.initialize();
+      ApiService.addLog('_initNotifications: initialize() done');
+    } catch (e) {
+      ApiService.addLog('background init: firebase/notifications error: $e');
+      return;
+    }
 
+    _setupNotificationHandlers();
+  }
+
+  void _setupNotificationHandlers() {
     _tokenSubscription?.cancel();
     _tokenSubscription = _notifications.onTokenRefresh.listen(
       (token) async {
@@ -210,25 +222,31 @@ class _VortiAppState extends State<VortiApp> {
       }
     };
 
-    ApiService.addLog('_initNotifications: getToken()...');
-    final token = await _notifications.getToken();
-    ApiService.addLog('_initNotifications: getToken() done, token=$token');
-    if (token != null) {
-      await _api.saveFcmToken(token);
-      if (_api.token != null) {
-        await _api.registerDevice(token, 'android');
-      }
-    }
+    () async {
+      try {
+        ApiService.addLog('_initNotifications: getToken()...');
+        final token = await _notifications.getToken();
+        ApiService.addLog('_initNotifications: getToken() done, token=$token');
+        if (token != null) {
+          await _api.saveFcmToken(token);
+          if (_api.token != null) {
+            await _api.registerDevice(token, 'android');
+          }
+        }
 
-    ApiService.addLog('_initNotifications: getInitialMessage()...');
-    final initialData = await _notifications.getInitialMessage();
-    if (initialData != null) {
-      ApiService.addLog('App launched from notification: $initialData');
-      final chatId = initialData['chatId'] as String?;
-      if (chatId != null) {
-        _notifications.onNavigateToChat?.call(chatId, initialData);
+        ApiService.addLog('_initNotifications: getInitialMessage()...');
+        final initialData = await _notifications.getInitialMessage();
+        if (initialData != null) {
+          ApiService.addLog('App launched from notification: $initialData');
+          final chatId = initialData['chatId'] as String?;
+          if (chatId != null) {
+            _notifications.onNavigateToChat?.call(chatId, initialData);
+          }
+        }
+      } catch (e) {
+        ApiService.addLog('notification post-init error: $e');
       }
-    }
+    }();
   }
 
   @override
@@ -254,42 +272,7 @@ class _VortiAppState extends State<VortiApp> {
           themeMode: ThemeProvider().themeMode,
           theme: ThemeProvider().getThemeData(brightness: Brightness.light),
           darkTheme: ThemeProvider().getThemeData(brightness: Brightness.dark),
-          home: _isLoading
-              ? Scaffold(
-                  body: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(height: 24),
-                        Text(
-                          ApiService.logs.isNotEmpty
-                              ? 'Step: ${ApiService.logs.last}'
-                              : 'Starting...',
-                          style: Theme.of(context).textTheme.bodySmall,
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 32),
-                        FilledButton.icon(
-                          onPressed: () {
-                            Clipboard.setData(
-                              ClipboardData(text: ApiService.getLogs()),
-                            );
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Logs copied to clipboard'),
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.copy, size: 18),
-                          label: const Text('Copy logs'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : _api.token != null
+          home: _api.token != null
               ? HomeScreen(api: _api)
               : AuthScreen(api: _api),
         );
