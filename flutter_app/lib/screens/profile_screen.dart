@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -97,8 +98,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadAccounts() async {
     try {
-      final accounts = await widget.api.getAccounts();
-      final current = await widget.api.getCurrentAccount();
+      // getCurrentAccount() внутри снова вызывает getAccounts() — поэтому
+      // здесь берём оба первичных значения параллельно и собираем сами.
+      final results = await Future.wait<Object?>([
+        widget.api.getAccounts(),
+        widget.api.getCurrentAccountId(),
+      ]);
+      final accounts = results[0] as List<Account>;
+      final currentId = results[1] as String?;
+      Account? current;
+      if (currentId != null && accounts.isNotEmpty) {
+        // Как в ApiService.getCurrentAccount: если id не найден — первый аккаунт.
+        current = accounts.firstWhere(
+          (a) => a.id == currentId,
+          orElse: () => accounts.first,
+        );
+      }
       if (mounted) {
         setState(() {
           _accounts = accounts;
@@ -180,18 +195,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return chars.isEmpty ? 'U' : chars.first.toUpperCase();
   }
 
+  /// Прогревает аватар в imageCache до setState — иначе CircleAvatar
+  /// на первый кадр показывает цветную подложку, а фото «всплывает» позже.
+  Future<void> _precacheAvatar(Profile profile) async {
+    final u = profile.avatarUrl;
+    if (u == null || u.isEmpty) return;
+    final url = u.startsWith('http') ? u : 'https://wlvorti.ru:3000$u';
+    // Короткий лимит: закэшированная аватарка декодируется мгновенно,
+    // а сетевую не ждём — профиль не должен подвисать.
+    await precacheNetworkImage(
+      url,
+      timeout: const Duration(milliseconds: 300),
+    );
+  }
+
+  Future<void> _showProfile(Profile profile) async {
+    await _precacheAvatar(profile);
+    if (!mounted) return;
+    setState(() {
+      _profile = profile;
+      _cachedProfile = profile;
+      _displayNameController.text = profile.displayName;
+      _bioController.text = profile.bio;
+      _emailController.text = profile.email;
+      _tagsController.text = profile.tags;
+    });
+  }
+
   Future<void> _loadProfile() async {
+    // Сначала профиль с диска — имя и аватар видны сразу, без ожидания сети.
+    if (_profile == null) {
+      final cached = await ChatStorage.loadProfile();
+      if (cached != null && mounted && _profile == null) {
+        await _showProfile(cached);
+      }
+    }
     try {
       final profile = await widget.api.getProfile();
-      if (mounted) {
-        setState(() {
-          _profile = profile;
-          _cachedProfile = profile;
-          _displayNameController.text = profile?.displayName ?? '';
-          _bioController.text = profile?.bio ?? '';
-          _emailController.text = profile?.email ?? '';
-          _tagsController.text = profile?.tags ?? '';
-        });
+      if (profile != null) {
+        unawaited(ChatStorage.saveProfile(profile));
+        await _showProfile(profile);
       }
     } catch (e) {
       print('Load profile error: $e');
@@ -220,6 +263,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() {
           if (updatedProfile != null) {
             _profile = updatedProfile;
+            _cachedProfile = updatedProfile;
+            unawaited(ChatStorage.saveProfile(updatedProfile));
           }
           _isSaving = false;
         });
@@ -294,9 +339,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final avatarUrl = await widget.api.uploadAvatar(out);
           out.delete().catchError((_) {});
           if (mounted) {
+            final updated = _profile?.copyWith(avatarUrl: avatarUrl);
+            if (updated != null) await _precacheAvatar(updated);
+            if (!mounted) return;
             setState(() {
-              _profile = _profile?.copyWith(avatarUrl: avatarUrl);
+              _profile = updated;
+              _cachedProfile = updated;
             });
+            if (updated != null) {
+              unawaited(ChatStorage.saveProfile(updated));
+            }
           }
         }
       } catch (e) {
@@ -317,8 +369,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final success = await widget.api.deleteAvatar();
     if (success && mounted) {
       setState(() {
-        _profile = _profile?.copyWith(avatarUrl: null);
+        final p = _profile;
+        // copyWith не умеет сбрасывать avatarUrl в null — собираем вручную.
+        _profile = p == null
+            ? null
+            : Profile(
+                id: p.id,
+                username: p.username,
+                displayName: p.displayName,
+                bio: p.bio,
+                avatarUrl: null,
+                createdAt: p.createdAt,
+                lastSeenAt: p.lastSeenAt,
+                email: p.email,
+                tags: p.tags,
+              );
+        _cachedProfile = _profile;
       });
+      final p = _profile;
+      if (p != null) unawaited(ChatStorage.saveProfile(p));
     }
   }
 

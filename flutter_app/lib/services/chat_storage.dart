@@ -41,6 +41,7 @@ class ChatStorage {
 
   static const String _rootDirName = 'chat_history_v1';
   static const String _chatsFileName = 'chats.json';
+  static const String _profileFileName = 'profile.json';
   static const String _messagesDirName = 'messages';
   static const String _legacyDbName = 'messages_cache.db';
   static const String _legacyChatsFile = 'chats_cache.json';
@@ -316,6 +317,37 @@ class ChatStorage {
     await _writeJson(
       File(p.join(dir.path, _chatsFileName)),
       chats.map((c) => c.toJson()).toList(),
+    );
+  }
+
+  // ==================== Профиль ====================
+
+  /// Профиль текущего пользователя с диска — чтобы экран аккаунта
+  /// показывал имя и аватар сразу, не дожидаясь сети.
+  static Future<Profile?> loadProfile() async {
+    final dir = await _ownerDir();
+    if (dir == null) return null;
+    try {
+      final file = File(p.join(dir.path, _profileFileName));
+      if (!await file.exists()) return null;
+      final raw = await file.readAsString();
+      if (raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return Profile.fromJson(decoded);
+      }
+    } catch (e) {
+      print('[ChatStorage] loadProfile error: $e');
+    }
+    return null;
+  }
+
+  static Future<void> saveProfile(Profile profile) async {
+    final dir = await _ownerDir();
+    if (dir == null) return;
+    await _writeJson(
+      File(p.join(dir.path, _profileFileName)),
+      profile.toJson(),
     );
   }
 

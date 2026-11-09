@@ -177,7 +177,15 @@ class ThemeProvider extends ChangeNotifier {
     final modeKey = _getKey(_themeKeyPrefix);
     final idKey = _getKey(_themeIdPrefix);
 
-    final modeValue = await _storage.read(key: modeKey);
+    // Два независимых ключа — читаем параллельно: каждое чтение secure
+    // storage ждёт расшифровку Keystore и не должно идти по очереди.
+    final first = await Future.wait([
+      _storage.read(key: modeKey),
+      _storage.read(key: idKey),
+    ]);
+    final modeValue = first[0] as String?;
+    final idValue = first[1] as String?;
+
     if (modeValue != null) {
       _themeMode = modeValue == 'dark' ? ThemeMode.dark : ThemeMode.light;
       _customColors = _themeMode == ThemeMode.dark
@@ -190,7 +198,6 @@ class ThemeProvider extends ChangeNotifier {
       _applyPreset('light_blue');
     }
 
-    final idValue = await _storage.read(key: idKey);
     if (idValue != null) {
       _themeId = idValue;
       if (idValue == 'custom') {
@@ -210,34 +217,43 @@ class ThemeProvider extends ChangeNotifier {
     final textKey = _getKey(_customTextKey);
     final textSecondaryKey = _getKey(_customSecondaryTextKey);
 
-    final primary = await _storage.read(key: primaryKey);
-    final secondary = await _storage.read(key: secondaryKey);
-    final background = await _storage.read(key: backgroundKey);
-    final surface = await _storage.read(key: surfaceKey);
-    final text = await _storage.read(key: textKey);
-    final textSecondary = await _storage.read(key: textSecondaryKey);
+    // Шесть ключей кастомной темы читаем одним Future.wait.
+    final values = await Future.wait([
+      _storage.read(key: primaryKey),
+      _storage.read(key: secondaryKey),
+      _storage.read(key: backgroundKey),
+      _storage.read(key: surfaceKey),
+      _storage.read(key: textKey),
+      _storage.read(key: textSecondaryKey),
+    ]);
+    String? parse(int i) => values[i] as String?;
+    int? toInt(String? v, int fallback) =>
+        v != null ? (int.tryParse(v) ?? fallback) : null;
 
     _customColors = ThemeColors(
-      primary: primary != null
-          ? Color(int.tryParse(primary) ?? _customColors.primary.value)
-          : _customColors.primary,
-      secondary: secondary != null
-          ? Color(int.tryParse(secondary) ?? _customColors.secondary.value)
-          : _customColors.secondary,
-      background: background != null
-          ? Color(int.tryParse(background) ?? _customColors.background.value)
-          : _customColors.background,
-      surface: surface != null
-          ? Color(int.tryParse(surface) ?? _customColors.surface.value)
-          : _customColors.surface,
-      text: text != null
-          ? Color(int.tryParse(text) ?? _customColors.text.value)
-          : _customColors.text,
-      textSecondary: textSecondary != null
-          ? Color(
-              int.tryParse(textSecondary) ?? _customColors.textSecondary.value,
-            )
-          : _customColors.textSecondary,
+      primary: Color(
+        toInt(parse(0), _customColors.primary.value) ??
+            _customColors.primary.value,
+      ),
+      secondary: Color(
+        toInt(parse(1), _customColors.secondary.value) ??
+            _customColors.secondary.value,
+      ),
+      background: Color(
+        toInt(parse(2), _customColors.background.value) ??
+            _customColors.background.value,
+      ),
+      surface: Color(
+        toInt(parse(3), _customColors.surface.value) ??
+            _customColors.surface.value,
+      ),
+      text: Color(
+        toInt(parse(4), _customColors.text.value) ?? _customColors.text.value,
+      ),
+      textSecondary: Color(
+        toInt(parse(5), _customColors.textSecondary.value) ??
+            _customColors.textSecondary.value,
+      ),
     );
   }
 

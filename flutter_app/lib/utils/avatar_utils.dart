@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 final _avatarColors = [
@@ -18,4 +20,29 @@ final _avatarColors = [
 Color colorFromId(String id) {
   final hash = id.codeUnits.fold<int>(0, (prev, c) => prev * 31 + c);
   return _avatarColors[hash.abs() % _avatarColors.length];
+}
+
+/// Декодирует сетевое изображение в imageCache и ждёт результат.
+/// После этого CircleAvatar/CachedNetworkImage с тем же URL рисует
+/// картинку с первого кадра, без подложки и «вспышки».
+Future<void> precacheNetworkImage(
+  String url, {
+  Duration timeout = const Duration(seconds: 2),
+}) {
+  final completer = Completer<void>();
+  final stream = CachedNetworkImageProvider(url).resolve(
+    const ImageConfiguration(),
+  );
+  late final ImageStreamListener listener;
+  void done() {
+    stream.removeListener(listener);
+    if (!completer.isCompleted) completer.complete();
+  }
+
+  listener = ImageStreamListener(
+    (_, __) => done(),
+    onError: (_, __) => done(),
+  );
+  stream.addListener(listener);
+  return completer.future.timeout(timeout, onTimeout: () {});
 }

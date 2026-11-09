@@ -44,7 +44,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
   Future<void> _loadCachedChats() async {
     final cached = await ChatStorage.loadChats();
     if (cached.isEmpty || !mounted) return;
+    // Saved-чат тоже берём из кэша — он всегда закреплён сверху,
+    // не дожидаясь сети.
+    final saved = cached.where((c) => c.type == 'saved').firstOrNull;
     setState(() {
+      _savedChatId = saved?.id;
+      _savedLastMessage = saved?.lastMessage;
+      _savedLastMessageAt = saved?.lastMessageAt;
+      _savedLastMessageKeyType = saved?.lastMessageKeyType;
       _chats = cached.where((c) => c.type != 'saved').toList();
       _isLoading = false;
     });
@@ -53,8 +60,13 @@ class _ChatsScreenState extends State<ChatsScreen> {
   Future<void> _loadData() async {
     print('[ChatsScreen] _loadData started');
     try {
-      String? savedId = await widget.api.getOrCreateSavedChat();
-      final chats = await widget.api.getChats();
+      // Параллельно: saved-чат и список чатов не зависят друг от друга
+      final results = await Future.wait([
+        widget.api.getOrCreateSavedChat(),
+        widget.api.getChats(),
+      ]);
+      String? savedId = results[0] as String?;
+      final chats = results[1] as List<Chat>;
       // fallback: если getOrCreateSavedChat не сработал, но saved-чат уже есть — берём его
       savedId ??= chats.where((c) => c.type == 'saved').firstOrNull?.id;
       print('[ChatsScreen] Got ${chats.length} chats');

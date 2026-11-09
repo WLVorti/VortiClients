@@ -28,9 +28,19 @@ void main() async {
   ApiService.init();
   final api = ApiService();
 
+  // Независимые локальные инициализации идут параллельно с credentials —
+  // secure storage и shared prefs не должны складываться в очередь.
+  final localInit = Future.wait([
+    LocaleProvider().loadLocale(),
+    ChatStorage.init(),
+    HiddenChats.init(),
+  ]);
+
   try {
+    // Проверка сессии не зависит от credentials — читаем параллельно.
+    final sessionExpired = api.isSessionExpired();
     await api.loadCredentials().timeout(const Duration(seconds: 5));
-    if (api.token != null && await api.isSessionExpired()) {
+    if (api.token != null && await sessionExpired) {
       ApiService.addLog(
         'startup: session expired by inactivity, clearing credentials',
       );
@@ -43,18 +53,10 @@ void main() async {
   ThemeProvider().setCurrentUser(api.userId);
   WallpaperService().setCurrentUser(api.userId);
   try {
-    await ThemeProvider().loadTheme();
-    await LocaleProvider().loadLocale();
+    // Ключи темы привязаны к userId — грузим только после credentials.
+    await Future.wait([ThemeProvider().loadTheme(), localInit]);
   } catch (e) {
     ApiService.addLog('startup: theme/locale error: $e');
-  }
-
-  try {
-    // Кэш чатов читается сразу с диска при старте HomeScreen.
-    await ChatStorage.init();
-    await HiddenChats.init();
-  } catch (e) {
-    ApiService.addLog('startup: local storage error: $e');
   }
 
   runApp(VortiApp(api: api));

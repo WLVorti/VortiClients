@@ -155,9 +155,16 @@ class ApiService {
   }
 
   Future<void> loadCredentials() async {
-    _token = await _storage.read(key: 'token');
-    _userId = await _storage.read(key: 'userId');
-    _fcmToken = await _storage.read(key: 'fcm_token');
+    // Каждое чтение secure storage — это расшифровка Keystore, поэтому
+    // три независимых ключа читаем параллельно, а не по очереди.
+    final results = await Future.wait([
+      _storage.read(key: 'token'),
+      _storage.read(key: 'userId'),
+      _storage.read(key: 'fcm_token'),
+    ]);
+    _token = results[0];
+    _userId = results[1];
+    _fcmToken = results[2];
     ApiService.addLog('Credentials loaded: token=${_token != null}, userId=$_userId');
   }
 
@@ -230,7 +237,10 @@ class ApiService {
   }
 
   Future<bool> isSessionExpired() async {
-    final lastActive = await _storage.read(key: _lastActiveKey);
+    final lastActive = await _storage.read(key: _lastActiveKey).timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => null,
+    );
     if (lastActive == null) return false;
     final lastActiveMs = int.tryParse(lastActive);
     if (lastActiveMs == null) return false;
@@ -247,25 +257,32 @@ class ApiService {
     final List<dynamic> decoded = jsonDecode(accountsJson);
     List<Account> accounts = decoded.map((a) => Account.fromJson(a)).toList();
     
-    // Enrich accounts with data from separate keys if missing
-    bool needsUpdate = false;
-    for (int i = 0; i < accounts.length; i++) {
-      Account acc = accounts[i];
-      final username = await _storage.read(key: 'account_${acc.id}_username');
-      final avatarUrl = await _storage.read(key: 'account_${acc.id}_avatar');
-      final displayName = await _storage.read(key: 'account_${acc.id}_displayName');
-      
+    // Enrich accounts with data from separate keys if missing.
+    // Чтения secure storage идут параллельно — последовательно это было
+    // 3 keystore-операции на каждый аккаунт.
+    var needsUpdate = false;
+    accounts = await Future.wait(accounts.map((acc) async {
+      final results = await Future.wait([
+        _storage.read(key: 'account_${acc.id}_username'),
+        _storage.read(key: 'account_${acc.id}_avatar'),
+        _storage.read(key: 'account_${acc.id}_displayName'),
+      ]);
+      final username = results[0];
+      final avatarUrl = results[1];
+      final displayName = results[2];
+
       // Update if we have better data from storage
       if (username != null && (acc.username.isEmpty || acc.username == acc.id)) {
-        accounts[i] = Account(
+        needsUpdate = true;
+        return Account(
           id: acc.id,
           username: username,
           avatarUrl: avatarUrl ?? acc.avatarUrl,
           displayName: displayName ?? acc.displayName,
         );
-        needsUpdate = true;
       }
-    }
+      return acc;
+    }));
     
     // Save updated accounts list if we enriched any
     if (needsUpdate) {

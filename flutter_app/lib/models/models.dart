@@ -112,6 +112,18 @@ class Profile {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'username': username,
+    'displayName': displayName,
+    'bio': bio,
+    'avatarUrl': avatarUrl,
+    'createdAt': createdAt,
+    'last_seen_at': lastSeenAt,
+    'email': email,
+    'tags': tags,
+  };
+
   Profile copyWith({String? displayName, String? bio, String? avatarUrl, String? tags}) {
     return Profile(
       id: id,

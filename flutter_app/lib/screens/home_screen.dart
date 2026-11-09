@@ -121,11 +121,11 @@ class ChatsTab extends StatefulWidget {
   State<ChatsTab> createState() => _ChatsTabState();
 }
 
-class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
+class _ChatsTabState extends State<ChatsTab>
+    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   List<Chat> _chats = [];
   final Map<String, int> _unreadCounts = {};
   final Set<String> _onlineUsers = {};
-  bool _isLoading = true;
   String? _savedChatId;
   String? _savedLastMessage;
   int? _savedLastMessageAt;
@@ -137,6 +137,9 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
   bool _searchHasMore = false;
   bool _isSearching = false;
   Timer? _searchTimer;
+
+  @override
+  bool get wantKeepAlive => true;
 
   List<Chat> _filterChats(List<Chat> chats) {
     return chats.where((c) =>
@@ -164,9 +167,18 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
   Future<void> _loadCachedChats() async {
     final cached = await ChatStorage.loadChats();
     if (cached.isEmpty || !mounted) return;
+    // Saved-чат берём из кэша — он всегда закреплён сверху,
+    // не дожидаясь сети.
+    final saved = cached.where((c) => c.type == 'saved').firstOrNull;
+    // Декод аватарок идёт в фоне и не задерживает отрисовку списка.
+    unawaited(_precacheAvatars(cached));
+    if (!mounted) return;
     setState(() {
+      _savedChatId = saved?.id;
+      _savedLastMessage = saved?.lastMessage;
+      _savedLastMessageAt = saved?.lastMessageAt;
+      _savedLastMessageKeyType = saved?.lastMessageKeyType;
       _chats = _filterChats(cached);
-      _isLoading = false;
     });
   }
 
@@ -220,7 +232,6 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
         setState(() {
           _savedChatId = savedId;
           _chats = _filterChats(chats);
-          _isLoading = false;
           if (savedId != null) {
             final savedChat = chats.where((c) => c.id == savedId).firstOrNull;
             _savedLastMessage = savedChat?.lastMessage;
@@ -232,9 +243,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      // Список из кэша уже показан; сетевая ошибка просто оставляет его.
     }
   }
 
@@ -265,18 +274,42 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
     final initials = Text(fallbackChar.toUpperCase());
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       final fullUrl = 'https://wlvorti.ru:3000$avatarUrl';
-      return Stack(
-        children: [
-          CircleAvatar(backgroundColor: fallbackColor, child: initials),
-          CircleAvatar(
-            backgroundColor: Colors.transparent,
-            backgroundImage: CachedNetworkImageProvider(fullUrl),
-            onBackgroundImageError: (_, __) {},
-          ),
-        ],
+      return _NetworkAvatar(
+        imageUrl: fullUrl,
+        backgroundColor: fallbackColor,
+        fallback: initials,
       );
     }
     return CircleAvatar(backgroundColor: fallbackColor, child: initials);
+  }
+
+  /// Ждёт, пока аватарки из кэша/диска декодируются в imageCache.
+  /// Без этого CircleAvatar первый кадр показывает инициалы.
+  Future<void> _precacheAvatars(List<Chat> chats) async {
+    final urls = <String>{};
+    for (final c in chats) {
+      final u = c.avatarUrl;
+      if (u != null && u.isNotEmpty) urls.add('${ApiService.baseUrl}$u');
+    }
+    await Future.wait(urls.map(_precacheOne));
+  }
+
+  Future<void> _precacheOne(String url) {
+    final completer = Completer<void>();
+    final stream = CachedNetworkImageProvider(url).resolve(
+      const ImageConfiguration(),
+    );
+    late final ImageStreamListener listener;
+    void done() {
+      stream.removeListener(listener);
+      if (!completer.isCompleted) completer.complete();
+    }
+    listener = ImageStreamListener((_, __) => done(), onError: (_, __) => done());
+    stream.addListener(listener);
+    return completer.future.timeout(
+      const Duration(seconds: 2),
+      onTimeout: () {},
+    );
   }
 
   void _setupWebSocket() async {
@@ -415,6 +448,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(AppLocalizations.of(context).chats),
@@ -455,9 +489,7 @@ class _ChatsTabState extends State<ChatsTab> with WidgetsBindingObserver {
             ),
           ),
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _isSearching && _searchController.text.trim().isNotEmpty
+            child: _isSearching && _searchController.text.trim().isNotEmpty
                     ? _searchResults.isEmpty
                         ? Center(child: Text(AppLocalizations.of(context).noMessagesFound))
                         : RefreshIndicator(
@@ -765,7 +797,8 @@ class CommunitiesTab extends StatefulWidget {
   State<CommunitiesTab> createState() => _CommunitiesTabState();
 }
 
-class _CommunitiesTabState extends State<CommunitiesTab> {
+class _CommunitiesTabState extends State<CommunitiesTab>
+    with AutomaticKeepAliveClientMixin {
   List<Chat> _groups = [];
   bool _isLoading = true;
   final Set<String> _onlineUsers = {};
@@ -777,6 +810,9 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
   bool _searchHasMore = false;
   bool _isSearching = false;
   Timer? _searchTimer;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -889,15 +925,10 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     final initials = Text(fallbackChar.toUpperCase());
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       final fullUrl = 'https://wlvorti.ru:3000$avatarUrl';
-      return Stack(
-        children: [
-          CircleAvatar(backgroundColor: fallbackColor, child: initials),
-          CircleAvatar(
-            backgroundColor: Colors.transparent,
-            backgroundImage: CachedNetworkImageProvider(fullUrl),
-            onBackgroundImageError: (_, __) {},
-          ),
-        ],
+      return _NetworkAvatar(
+        imageUrl: fullUrl,
+        backgroundColor: fallbackColor,
+        fallback: initials,
       );
     }
     return CircleAvatar(backgroundColor: fallbackColor, child: initials);
@@ -905,6 +936,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(AppLocalizations.of(context).communities),
@@ -1369,5 +1401,48 @@ class ProfileTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ProfileScreen(api: api);
+  }
+}
+
+/// Аватарка с сетевым фото: пока картинка грузится — цветной круг,
+/// при ошибке (404 и т.п.) — инициалы. Без «вспышки» букв при загрузке.
+class _NetworkAvatar extends StatefulWidget {
+  final String imageUrl;
+  final Color backgroundColor;
+  final Widget fallback;
+
+  const _NetworkAvatar({
+    required this.imageUrl,
+    required this.backgroundColor,
+    required this.fallback,
+  });
+
+  @override
+  State<_NetworkAvatar> createState() => _NetworkAvatarState();
+}
+
+class _NetworkAvatarState extends State<_NetworkAvatar> {
+  bool _failed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) {
+      return CircleAvatar(
+        backgroundColor: widget.backgroundColor,
+        child: widget.fallback,
+      );
+    }
+    return Stack(
+      children: [
+        CircleAvatar(backgroundColor: widget.backgroundColor),
+        CircleAvatar(
+          backgroundColor: Colors.transparent,
+          backgroundImage: CachedNetworkImageProvider(widget.imageUrl),
+          onBackgroundImageError: (_, __) {
+            if (mounted) setState(() => _failed = true);
+          },
+        ),
+      ],
+    );
   }
 }
