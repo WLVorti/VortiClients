@@ -1,3 +1,12 @@
+import java.io.FileInputStream
+import java.util.Properties
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
+}
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -33,11 +42,40 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+
+            // Переназначаем существующую debug-конфигурацию на тот же keystore,
+            // чтобы debug- и release-сборки были подписаны одним ключом и
+            // приложение ставилось поверх старого без удаления.
+            val debugConfig = signingConfigs.getByName("debug")
+            debugConfig.keyAlias = keystoreProperties["keyAlias"] as String
+            debugConfig.keyPassword = keystoreProperties["keyPassword"] as String
+            debugConfig.storeFile = file(keystoreProperties["storeFile"] as String)
+            debugConfig.storePassword = keystoreProperties["storePassword"] as String
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+        }
+        debug {
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("debug")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 

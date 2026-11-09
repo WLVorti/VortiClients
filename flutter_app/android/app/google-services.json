@@ -14,8 +14,12 @@
       },
       "oauth_client": [
         {
-          "client_id": "116660736245-026n4j7pmcn4cue94soa5296aussb2ba.apps.googleusercontent.com",
-          "client_type": 1
+          "client_id": "116660736245-plnrvri4dch7l26rnue34cmn1iqk2i3k.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wlvorti.vorti_messenger",
+            "certificate_hash": "2004588ac40aedd901efce1469197d1ffbfa003a"
+          }
         },
         {
           "client_id": "116660736245-rhk72if096bp8bnivhn7lr2d5o2j4q90.apps.googleusercontent.com",
