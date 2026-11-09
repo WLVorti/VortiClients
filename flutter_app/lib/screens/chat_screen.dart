@@ -73,6 +73,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _isUploading = false;
   final Map<String, double> _uploadProgresses = {};
   final Map<String, File> _uploadTempFiles = {};
+  // Локальные файлы уже отправленных изображений: после broadcast
+  // показываем их вместо CachedNetworkImage — без placeholder-вспышки.
+  final Map<String, File> _localSentFiles = {};
   final Map<String, Timer> _resolveTimers = {};
   final Map<String, double> _lastReportedProgress = {};
   final Map<String, int> _lastReportTimeMs = {};
@@ -660,11 +663,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     setState(() {
       // 1) Remove any existing copy by tempId OR real messageId (dedup)
           if (tempId != null) {
-        final before = _messages.length;
+        final tempFile = _uploadTempFiles[tempId];
         _messages.removeWhere((m) => m.id == tempId);
         _uploadProgresses.remove(tempId);
         _uploadTempFiles.remove(tempId);
         _resolveTimers.remove(tempId)?.cancel();
+        if (tempFile != null) _localSentFiles[messageId] = tempFile;
         replacedTemp = true;
       }
       _messages.removeWhere((m) => m.id == messageId);
@@ -1266,6 +1270,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           child: CachedNetworkImage(
                             imageUrl: '${ApiService.baseUrl}${s.imageUrl}',
                             fit: BoxFit.contain,
+                            fadeInDuration: Duration.zero,
+                            fadeOutDuration: Duration.zero,
+                            placeholderFadeInDuration: Duration.zero,
                             placeholder: (_, __) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                             errorWidget: (_, __, ___) => Icon(Icons.broken_image, color: theme.colorScheme.onSurfaceVariant),
                           ),
@@ -1448,6 +1455,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             ? await api.uploadFileChunked(media.file, onProgress: report)
             : await api.uploadFile(media.file, onProgress: report);
         if (uploadResult != null) {
+          _prefetchFileImage(uploadResult['fileId']!, uploadResult['mimeType']);
           if (mounted) setState(() => _uploadProgresses[tempId] = 1.0);
           // Even if unmounted, still send the file message (background upload).
           final sent = await api.sendFile(
@@ -1521,6 +1529,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       t.cancel();
     }
     _resolveTimers.clear();
+    for (final f in _localSentFiles.values) {
+      f.delete().catchError((_) => f);
+    }
+    _localSentFiles.clear();
     super.dispose();
   }
 
@@ -2157,6 +2169,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       ? CachedNetworkImage(
                           imageUrl: imageUrl,
                           fit: BoxFit.contain,
+                          fadeInDuration: Duration.zero,
+                          fadeOutDuration: Duration.zero,
+                          placeholderFadeInDuration: Duration.zero,
                           placeholder: (_, __) => Container(
                             height: 120,
                             color: isMe ? myBubbleColor : theirBubbleColor,
@@ -2276,10 +2291,24 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 Flexible(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
+                    child: _localSentFiles[msg.id] != null
+                        ? Image.file(
+                            _localSentFiles[msg.id]!,
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                          )
+                        : CachedNetworkImage(
                       imageUrl:
                           '${ApiService.baseUrl}/download/${msg.fileId}?token=${widget.api.token}',
-                  fit: BoxFit.cover,
+                      fit: BoxFit.cover,
+                      fadeInDuration: Duration.zero,
+                      fadeOutDuration: Duration.zero,
+                      placeholderFadeInDuration: Duration.zero,
+                      placeholder: (_, __) => Container(
+                        color: isMe
+                            ? myBubbleColor
+                            : Theme.of(context).colorScheme.surfaceContainerHigh,
+                      ),
                       errorWidget: (_, __, ___) => Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -3142,6 +3171,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                   child: CachedNetworkImage(
                                     imageUrl: '${ApiService.baseUrl}${sticker.imageUrl}',
                                     fit: BoxFit.contain,
+                                    fadeInDuration: Duration.zero,
+                                    fadeOutDuration: Duration.zero,
+                                    placeholderFadeInDuration: Duration.zero,
                                     placeholder: (_, __) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                                     errorWidget: (_, __, ___) => Icon(Icons.broken_image, color: theme.colorScheme.onSurfaceVariant),
                                   ),
@@ -3441,6 +3473,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  /// Прогревает кэш картинки сразу после upload — когда broadcast
+  /// подменит временный баббл реальным, CachedNetworkImage уже в памяти
+  /// и не показывает пустой placeholder.
+  void _prefetchFileImage(String fileId, String? mimeType) {
+    if (mimeType == null || !mimeType.startsWith('image/')) return;
+    if (!mounted) return;
+    final url =
+        '${ApiService.baseUrl}/download/$fileId?token=${widget.api.token}';
+    precacheImage(CachedNetworkImageProvider(url), context)
+        .catchError((_) {});
+  }
+
   Widget _buildUploadBubble(
     Message msg,
     double progress,
@@ -3460,137 +3504,199 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].contains(ext);
     final percent = (progress * 100).clamp(0, 100).toStringAsFixed(0);
 
-    final Widget content;
-    if (isImage && file != null) {
-      content = ClipRRect(
+    Widget metaChip(List<Widget> children) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          width: 220,
-          height: 200,
-          child: Stack(
-            fit: StackFit.expand,
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: children),
+    );
+
+    Widget percentChip() => metaChip([
+      SizedBox(
+        width: 30,
+        child: Text(
+          '$percent%',
+          textAlign: TextAlign.right,
+          style: const TextStyle(fontSize: 10, color: Colors.white70),
+        ),
+      ),
+      const SizedBox(width: 4),
+      _buildStatusIcon(MessageStatus.sending),
+    ]);
+
+    // Оверлей прогресса у нижней кромки пузыря — не влияет на layout,
+    // поэтому при подмене на отправленный баббл размер не меняется.
+    Widget thinProgress() => LinearProgressIndicator(
+      value: progress > 0 ? progress : null,
+      minHeight: 3,
+      backgroundColor: Colors.black26,
+      valueColor: const AlwaysStoppedAnimation(Colors.white70),
+    );
+
+    // Те же ограничения и скругления, что у отправленного медиа-баббла —
+    // чтобы при подмене временного сообщения на реальное не было «прыжка».
+    if (isImage && file != null) {
+      return Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.6,
+            maxHeight: MediaQuery.of(context).size.height * 0.4,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: isMe
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
             children: [
-              Image.file(
-                file,
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
-                errorBuilder: (_, __, ___) => Container(
-                  color: secTextColor.withValues(alpha: 0.2),
-                  child: Icon(Icons.broken_image, color: textColor),
-                ),
-              ),
-              if (progress < 1.0) Container(color: Colors.black45),
-              if (progress < 1.0)
-                Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+              Flexible(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Stack(
                     children: [
-                      CircularProgressIndicator(
-                        value: progress,
-                        strokeWidth: 3,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '$percent%',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                      Image.file(
+                        file,
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: secTextColor.withValues(alpha: 0.2),
+                          child: Icon(Icons.broken_image, color: textColor),
                         ),
                       ),
+                      if (progress < 1.0)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 3,
+                            backgroundColor: Colors.black38,
+                          ),
+                        ),
                     ],
                   ),
                 ),
+              ),
+              const SizedBox(height: 4),
+              percentChip(),
             ],
           ),
         ),
-      );
-    } else if (isAudio) {
-      content = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.mic, size: 24, color: textColor),
-          const SizedBox(width: 10),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 180),
-            child: Text(
-              fileName,
-              style: TextStyle(color: textColor, fontSize: 13),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      );
-    } else {
-      content = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isVideo ? Icons.videocam : Icons.insert_drive_file,
-            size: 24,
-            color: textColor,
-          ),
-          const SizedBox(width: 10),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 180),
-            child: Text(
-              fileName,
-              style: TextStyle(color: textColor, fontSize: 13),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
       );
     }
 
-    final showPercentFooter = !(isImage && file != null);
-    final footerChildren = showPercentFooter
-        ? [
-            Text(
-              '$percent%',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: secTextColor,
-              ),
-            ),
-            const SizedBox(width: 4),
-            _buildStatusIcon(MessageStatus.sending),
-          ]
-        : [
-            _buildStatusIcon(MessageStatus.sending),
-          ];
-
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 2),
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-        decoration: BoxDecoration(
-          color: bubbleColor,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            content,
-            if (showPercentFooter) ...[
-              const SizedBox(height: 6),
-              SizedBox(
-                width: 160,
-                child: LinearProgressIndicator(
-                  value: progress > 0 ? progress : null,
+    if (isVideo) {
+      return Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.6,
+            maxHeight: MediaQuery.of(context).size.height * 0.4,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: isMe
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              Flexible(
+                fit: FlexFit.loose,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: _VideoThumbnail(
+                    videoUrl: file?.path ?? '',
+                    fileName: fileName,
+                  ),
                 ),
               ),
+              const SizedBox(height: 4),
+              percentChip(),
             ],
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: footerChildren,
-            ),
-          ],
+          ),
+        ),
+      );
+    }
+
+    // Аудио и файлы — тот же «пузырь», что и у отправленных сообщений.
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        child: IntrinsicWidth(
+          child: Stack(
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 2),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+                decoration: BoxDecoration(
+                  color: isMe ? bubbleColor : secTextColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(16),
+                    topRight: const Radius.circular(16),
+                    bottomLeft: Radius.circular(isMe ? 16 : 4),
+                    bottomRight: Radius.circular(isMe ? 4 : 16),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isAudio ? Icons.mic : Icons.attach_file,
+                          size: 20,
+                          color: secTextColor,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            fileName,
+                            style: TextStyle(
+                              color: isMe
+                                  ? Theme.of(context).colorScheme.onSurface
+                                  : Theme.of(context).colorScheme.onSurface,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _formatTime(msg.createdAt),
+                            style: TextStyle(fontSize: 10, color: secTextColor),
+                          ),
+                          if (isMe) ...[
+                            const SizedBox(width: 4),
+                            _buildStatusIcon(MessageStatus.sending),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (progress < 1.0)
+                Positioned(
+                  left: 8,
+                  right: 8,
+                  bottom: 2,
+                  child: thinProgress(),
+                ),
+            ],
+          ),
         ),
       ),
     );
