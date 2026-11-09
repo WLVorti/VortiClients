@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:image_cropper_widget/image_cropper_widget.dart';
 import '../l10n/app_localizations.dart';
 
 class SelectedMedia {
@@ -36,7 +37,13 @@ class _AttachmentPickerWidgetState extends State<AttachmentPickerWidget>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final Set<AssetEntity> _selectedAssets = {};
+  File? _croppedFile;
   bool _sending = false;
+
+  bool get _canCrop {
+    if (_selectedAssets.length != 1) return false;
+    return _selectedAssets.first.type == AssetType.image;
+  }
 
   @override
   void initState() {
@@ -56,11 +63,20 @@ class _AttachmentPickerWidgetState extends State<AttachmentPickerWidget>
     try {
       final result = <SelectedMedia>[];
       for (final asset in _selectedAssets) {
-        final file = await asset.file;
+        final file = _croppedFile ?? await asset.file;
         if (file == null) continue;
-        final title = asset.title ?? 'unknown';
+        final cropped = _croppedFile != null;
+        final title = cropped
+            ? file.uri.pathSegments.last
+            : (asset.title ?? 'unknown');
         final ext = title.split('.').last.toLowerCase();
-        final type = asset.type == AssetType.video ? 'video' : asset.type == AssetType.audio ? 'audio' : 'image';
+        final type = cropped
+            ? 'image'
+            : asset.type == AssetType.video
+                ? 'video'
+                : asset.type == AssetType.audio
+                    ? 'audio'
+                    : 'image';
         result.add(SelectedMedia(file: file, name: title, mimeType: '$type/$ext'));
       }
       if (!mounted) return;
@@ -68,6 +84,65 @@ class _AttachmentPickerWidgetState extends State<AttachmentPickerWidget>
     } catch (_) {
       setState(() => _sending = false);
     }
+  }
+
+  Future<void> _cropSelected() async {
+    if (_selectedAssets.length != 1) return;
+    final asset = _selectedAssets.first;
+    final file = await asset.file;
+    if (file == null || !mounted) return;
+
+    final controller = ImageCropperController();
+    final bytes = await Navigator.push<Uint8List>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(context),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.rotate_right),
+                onPressed: () => controller.rotateRight(),
+              ),
+              TextButton(
+                onPressed: () async {
+                  try {
+                    final cropped = await controller.crop();
+                    if (context.mounted) Navigator.pop(context, cropped);
+                  } catch (_) {
+                    if (context.mounted) Navigator.pop(context);
+                  }
+                },
+                child: Text(AppLocalizations.of(context).save),
+              ),
+            ],
+          ),
+          body: ImageCropperWidget(
+            controller: controller,
+            image: FileImage(file),
+            aspectRatio: CropperRatio.custom,
+            style: CropperStyle(showGrid: true),
+          ),
+        ),
+      ),
+    );
+    if (bytes == null || bytes.isEmpty || !mounted) return;
+    try {
+      final dir = await getTemporaryDirectory();
+      final out = File(
+        '${dir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+      await out.writeAsBytes(bytes);
+      setState(() => _croppedFile = out);
+    } catch (_) {}
+  }
+
+  void _onSelectionChanged(Set<AssetEntity> _) {
+    _croppedFile = null;
+    setState(() {});
   }
 
   @override
@@ -128,12 +203,12 @@ class _AttachmentPickerWidgetState extends State<AttachmentPickerWidget>
               children: [
                 _MediaTab(
                   selectedAssets: _selectedAssets,
-                  onSelectionChanged: (_) => setState(() {}),
+                  onSelectionChanged: _onSelectionChanged,
                 ),
                 _FilesTab(),
                 _MusicTab(
                   selectedAssets: _selectedAssets,
-                  onSelectionChanged: (_) => setState(() {}),
+                  onSelectionChanged: _onSelectionChanged,
                 ),
               ],
             ),
@@ -160,6 +235,18 @@ class _AttachmentPickerWidgetState extends State<AttachmentPickerWidget>
                       style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const Spacer(),
+                    if (_canCrop)
+                      IconButton(
+                        onPressed: _sending ? null : _cropSelected,
+                        icon: Icon(
+                          Icons.crop,
+                          size: 20,
+                          color: _croppedFile != null
+                              ? theme.colorScheme.primary
+                              : null,
+                        ),
+                        tooltip: l10n.cropImage,
+                      ),
                     FilledButton.icon(
                       onPressed: _sending ? null : _send,
                       icon: _sending

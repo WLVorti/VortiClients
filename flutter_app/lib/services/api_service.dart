@@ -129,6 +129,12 @@ class ApiService {
   Timer? _reconnectTimer;
   StreamSubscription<dynamic>? _wsStreamSubscription;
 
+  // Исходящие WS-сообщения, отправленные пока сокет был недоступен.
+  // Сбрасываются повторной отправкой после успешной аутентификации
+  // (сервер отвечает {type: 'connected'}).
+  final List<Map<String, dynamic>> _pendingWsMessages = [];
+  static const int _maxPendingWsMessages = 100;
+
   String? get token => _token;
   String? get userId => _userId;
   String? get activeChatId => _activeChatId;
@@ -537,9 +543,14 @@ class ApiService {
   Future<Map<String, dynamic>> signInWithGoogle() async {
     ApiService.addLog('Google sign-in starting...');
     try {
-      // Firebase поднимается в фоне после первого кадра — гарантируем,
-      // что к моменту входа он уже инициализирован.
-      await Firebase.initializeApp();
+      // Инициализируем Firebase, только если ещё не инициализирован.
+      // В main.dart Firebase поднимается в фоне после первого кадра,
+      // поэтому повторный initializeApp() может бросить исключение.
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+        ApiService.addLog('Google sign-in: Firebase.initializeApp() done');
+      }
+
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
         ApiService.addLog('Google sign-in cancelled by user');
@@ -547,15 +558,22 @@ class ApiService {
       }
 
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final accessToken = googleAuth.accessToken;
+      final idToken = googleAuth.idToken;
+      if (accessToken == null || idToken == null) {
+        ApiService.addLog('Google sign-in: missing tokens (accessToken=$accessToken idToken=$idToken)');
+        return {'status': 'error', 'message': 'Failed to get Google tokens'};
+      }
+
       final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
+        accessToken: accessToken,
+        idToken: idToken,
       );
 
       final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-      final String? idToken = await userCredential.user?.getIdToken();
+      final String? firebaseIdToken = await userCredential.user?.getIdToken();
 
-      if (idToken == null) {
+      if (firebaseIdToken == null) {
         ApiService.addLog('Failed to get Firebase ID token');
         return {'status': 'error', 'message': 'Failed to authenticate'};
       }
@@ -565,7 +583,7 @@ class ApiService {
         Uri.parse('$baseUrl/auth/google'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'idToken': idToken,
+          'idToken': firebaseIdToken,
           ...clientInfoPayload(),
         }),
       );
@@ -934,6 +952,7 @@ class ApiService {
           final msg = jsonDecode(data);
 
           if (msg['type'] == 'connected') {
+            _flushPendingWsMessages();
             CryptoService.uploadPublicKey(this);
             // clientInfo уже отправляется через REST при входе/регистрации.
             // Отдельное WS-сообщение сервер не поддерживает и отвечает
@@ -1093,47 +1112,55 @@ class ApiService {
     });
   }
 
-  Future<void> sendMessageViaWs(String chatId, String text, {String? replyTo, String? tempId, String? keyType, String? senderKeyId, String? recipientKeyId}) async {
-    if (_wsChannel?.sink != null) {
-      try {
-        _wsChannel!.sink.add(
-          jsonEncode({
-            'type': 'send',
-            'chatId': chatId,
-            'text': text,
-            if (replyTo != null) 'replyTo': replyTo,
-            if (tempId != null) 'tempId': tempId,
-            if (keyType != null) 'keyType': keyType,
-            if (senderKeyId != null) 'senderKeyId': senderKeyId,
-            if (recipientKeyId != null) 'recipientKeyId': recipientKeyId,
-          }),
-        );
-        ApiService.addLog('sendMessageViaWs: sent tempId=$tempId chatId=$chatId keyType=$keyType');
-        return;
-      } catch (e) {
-        ApiService.addLog('sendMessageViaWs: WS send error for chatId=$chatId tempId=$tempId: $e');
-      }
-    } else {
-      ApiService.addLog('sendMessageViaWs: WS null for chatId=$chatId tempId=$tempId, falling back to REST');
+  bool _wsSendNow(Map<String, dynamic> payload) {
+    final sink = _wsChannel?.sink;
+    if (sink == null) return false;
+    try {
+      sink.add(jsonEncode(payload));
+      return true;
+    } catch (_) {
+      return false;
     }
-    await sendMessageViaRest(chatId, text, replyTo: replyTo, tempId: tempId, keyType: keyType, senderKeyId: senderKeyId, recipientKeyId: recipientKeyId);
   }
 
-  Future<void> sendMessageViaRest(String chatId, String text, {String? replyTo, String? tempId, String? keyType, String? senderKeyId, String? recipientKeyId}) async {
-    try {
-      final res = await _client.post(
-        Uri.parse('$baseUrl/chats/$chatId/messages'),
-        headers: _headers,
-        body: jsonEncode({'text': text, if (replyTo != null) 'replyTo': replyTo, if (keyType != null) 'key_type': keyType, if (senderKeyId != null) 'sender_key_id': senderKeyId, if (recipientKeyId != null) 'recipient_key_id': recipientKeyId}),
-      );
-      if (res.statusCode == 200) {
-        // Don't call onMessage here - server will broadcast it back via WebSocket
-      } else {
-        ApiService.addLog('sendMessageViaRest: HTTP ${res.statusCode} for chatId=$chatId tempId=$tempId: ${res.body}');
-      }
-    } catch (e) {
-      ApiService.addLog('sendMessageViaRest: exception for chatId=$chatId tempId=$tempId: $e');
+  void _queueOrSendWs(Map<String, dynamic> payload, String logTag) {
+    if (_wsSendNow(payload)) {
+      ApiService.addLog('$logTag: sent');
+      return;
     }
+    if (_pendingWsMessages.length >= _maxPendingWsMessages) {
+      _pendingWsMessages.removeAt(0);
+      ApiService.addLog('$logTag: queue full, dropped oldest message');
+    }
+    _pendingWsMessages.add(payload);
+    ApiService.addLog(
+      '$logTag: WS unavailable, queued (${_pendingWsMessages.length})',
+    );
+  }
+
+  void _flushPendingWsMessages() {
+    while (_pendingWsMessages.isNotEmpty) {
+      if (!_wsSendNow(_pendingWsMessages.first)) break;
+      _pendingWsMessages.removeAt(0);
+    }
+    if (_pendingWsMessages.isNotEmpty) {
+      ApiService.addLog(
+        'WS: ${_pendingWsMessages.length} messages still pending',
+      );
+    }
+  }
+
+  Future<void> sendMessageViaWs(String chatId, String text, {String? replyTo, String? tempId, String? keyType, String? senderKeyId, String? recipientKeyId}) async {
+    _queueOrSendWs({
+      'type': 'send',
+      'chatId': chatId,
+      'text': text,
+      if (replyTo != null) 'replyTo': replyTo,
+      if (tempId != null) 'tempId': tempId,
+      if (keyType != null) 'keyType': keyType,
+      if (senderKeyId != null) 'senderKeyId': senderKeyId,
+      if (recipientKeyId != null) 'recipientKeyId': recipientKeyId,
+    }, 'sendMessageViaWs chatId=$chatId tempId=$tempId');
   }
 
   void sendMessage(String chatId, String text, {String? replyTo, String? tempId, String? keyType, String? senderKeyId, String? recipientKeyId}) {
@@ -1408,53 +1435,6 @@ class ApiService {
     }
   }
 
-  Future<bool> sendFileViaWs(String chatId, String fileId, {String? replyTo, String? mimeType, String? tempId}) async {
-    if (_wsChannel?.sink != null) {
-      try {
-        _wsChannel!.sink.add(
-          jsonEncode({
-            'type': 'sendFile',
-            'chatId': chatId,
-            'fileId': fileId,
-            if (replyTo != null) 'replyTo': replyTo,
-            if (mimeType != null) 'fileMimeType': mimeType,
-            if (tempId != null) 'tempId': tempId,
-          }),
-        );
-        ApiService.addLog('sendFileViaWs: sent fileId=$fileId chatId=$chatId');
-        return true;
-      } catch (e) {
-        ApiService.addLog('sendFileViaWs: WS send error for chatId=$chatId fileId=$fileId: $e');
-      }
-    } else {
-      ApiService.addLog('sendFileViaWs: WS null for chatId=$chatId fileId=$fileId, falling back to REST');
-    }
-    return false;
-  }
-
-  Future<bool> sendFileViaRest(String chatId, String fileId, {String? replyTo, String? mimeType}) async {
-    try {
-      final res = await _client.post(
-        Uri.parse('$baseUrl/chats/$chatId/messages'),
-        headers: _headers,
-        body: jsonEncode({
-          'text': '[File]',
-          'fileId': fileId,
-          if (replyTo != null) 'replyTo': replyTo,
-        }),
-      );
-      if (res.statusCode == 200) {
-        // Don't call onMessage here - server will broadcast it back via WebSocket
-        return true;
-      }
-      ApiService.addLog('sendFileViaRest: HTTP ${res.statusCode} for chatId=$chatId fileId=$fileId: ${res.body}');
-      return false;
-    } catch (e) {
-      ApiService.addLog('sendFileViaRest: exception for chatId=$chatId fileId=$fileId: $e');
-      return false;
-    }
-  }
-
   Future<bool> sendFile(
     String chatId,
     String fileId, {
@@ -1462,10 +1442,19 @@ class ApiService {
     String? mimeType,
     String? tempId,
   }) async {
-    if (await sendFileViaWs(chatId, fileId, replyTo: replyTo, mimeType: mimeType, tempId: tempId)) {
-      return true;
-    }
-    return sendFileViaRest(chatId, fileId, replyTo: replyTo, mimeType: mimeType);
+    // Сервер принимает файлы только по WS (POST /chats/:id/messages
+    // не существует). Если сокет недоступен — кладём в очередь,
+    // отправится после переподключения; временный пузырь в чате
+    // дождётся broadcast по tempId.
+    _queueOrSendWs({
+      'type': 'sendFile',
+      'chatId': chatId,
+      'fileId': fileId,
+      if (replyTo != null) 'replyTo': replyTo,
+      if (mimeType != null) 'fileMimeType': mimeType,
+      if (tempId != null) 'tempId': tempId,
+    }, 'sendFile fileId=$fileId chatId=$chatId tempId=$tempId');
+    return true;
   }
 
   void sendSticker(String chatId, String stickerId, {String? tempId}) {
@@ -1808,6 +1797,7 @@ class ApiService {
 
   void disconnect() {
     _isIntentionalDisconnect = true;
+    _pendingWsMessages.clear();
     _isReconnecting = false;
     _reconnectAttempts = 0;
     _isConnecting = false;

@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:image_cropper_widget/image_cropper_widget.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_waveforms/audio_waveforms.dart' hide PlayerState;
 import '../widgets/attachment_picker_widget.dart';
@@ -1722,6 +1723,66 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _pendingFileName = null;
       _pendingFileMimeType = null;
     });
+  }
+
+  Future<void> _cropPendingImage() async {
+    final file = _pendingFile;
+    if (file == null) return;
+    final controller = ImageCropperController();
+    final bytes = await Navigator.push<Uint8List>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(context),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.rotate_right),
+                onPressed: () => controller.rotateRight(),
+              ),
+              TextButton(
+                onPressed: () async {
+                  try {
+                    final cropped = await controller.crop();
+                    if (context.mounted) Navigator.pop(context, cropped);
+                  } catch (_) {
+                    if (context.mounted) Navigator.pop(context);
+                  }
+                },
+                child: Text(AppLocalizations.of(context).save),
+              ),
+            ],
+          ),
+          body: ImageCropperWidget(
+            controller: controller,
+            image: FileImage(file),
+            aspectRatio: CropperRatio.custom,
+            style: CropperStyle(showGrid: true),
+          ),
+        ),
+      ),
+    );
+    if (bytes == null || bytes.isEmpty || !mounted) return;
+    try {
+      final dir = await getTemporaryDirectory();
+      final out = File(
+        '${dir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+      await out.writeAsBytes(bytes);
+      final compressed = await _compressImage(out);
+      final finalFile = compressed ?? out;
+      final ext = finalFile.path.split('.').last.toLowerCase();
+      setState(() {
+        _pendingFile = finalFile;
+        _pendingFileName = 'cropped.$ext';
+        _pendingFileMimeType = 'image/$ext';
+      });
+    } catch (_) {
+      _showSnackBar(AppLocalizations.of(context).errorSelectingFile);
+    }
   }
 
   void _showSnackBar(String message) {
@@ -3625,13 +3686,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              else
+              else ...[
+                if (isImage)
+                  IconButton(
+                    icon: const Icon(Icons.crop, size: 18),
+                    tooltip: AppLocalizations.of(context).cropImage,
+                    onPressed: _cropPendingImage,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
                 IconButton(
                   icon: const Icon(Icons.close, size: 18),
                   onPressed: _cancelPendingFile,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                 ),
+              ],
             ],
           ),
           const SizedBox(height: 4),
@@ -3705,6 +3775,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _resolveTimers.remove(tempId);
       if (!mounted) return;
       if (!_uploadProgresses.containsKey(tempId)) return; // broadcast already resolved it
+      if (!widget.api.isWsActive) {
+        // WS ещё не восстановился: sendFile лежит в очереди api_service
+        // и уйдёт после reconnect — ждём broadcast, не удаляя пузырь.
+        _scheduleUploadResolve(tempId);
+        return;
+      }
       setState(() {
         _messages.removeWhere((m) => m.id == tempId);
         _uploadProgresses.remove(tempId);

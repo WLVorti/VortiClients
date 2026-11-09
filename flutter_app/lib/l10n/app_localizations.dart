@@ -146,6 +146,7 @@ class AppLocalizations {
   String get takePhoto => isRu ? 'Камера' : 'Camera';
   String get attachFile => isRu ? 'Файл' : 'File';
   String get attachMedia => isRu ? 'Прикрепить' : 'Attach';
+  String get cropImage => isRu ? 'Обрезать' : 'Crop';
   String get username => isRu ? 'Имя пользователя' : 'Username';
   String get password => isRu ? 'Пароль' : 'Password';
   String get login => isRu ? 'Войти' : 'Login';
