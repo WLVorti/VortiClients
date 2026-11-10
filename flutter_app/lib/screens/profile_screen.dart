@@ -28,6 +28,12 @@ class ProfileScreen extends StatefulWidget {
 
   const ProfileScreen({super.key, required this.api});
 
+  /// Заполняет статический кэш профиля заранее (на старте приложения),
+  /// чтобы initState вкладки Account сразу показал заполненные поля.
+  static void primeProfileCache(Profile profile) {
+    _ProfileScreenState._cachedProfile = profile;
+  }
+
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
@@ -209,8 +215,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<void> _showProfile(Profile profile) async {
-    await _precacheAvatar(profile);
+  void _showProfile(Profile profile) {
+    // Без ожидания декода аватара — поля заполняются мгновенно,
+    // фото подтягивается в imageCache из прогрева на старте приложения.
     if (!mounted) return;
     setState(() {
       _profile = profile;
@@ -227,14 +234,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (_profile == null) {
       final cached = await ChatStorage.loadProfile();
       if (cached != null && mounted && _profile == null) {
-        await _showProfile(cached);
+        _showProfile(cached);
       }
     }
     try {
       final profile = await widget.api.getProfile();
       if (profile != null) {
         unawaited(ChatStorage.saveProfile(profile));
-        await _showProfile(profile);
+        _showProfile(profile);
       }
     } catch (e) {
       print('Load profile error: $e');

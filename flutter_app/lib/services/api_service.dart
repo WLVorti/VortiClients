@@ -1224,29 +1224,35 @@ class ApiService {
   }
 
   void sendReaction(String messageId, String emoji, String action) {
-    _wsChannel?.sink.add(jsonEncode({
+    _queueOrSendWs({
       'type': 'react',
       'messageId': messageId,
       'emoji': emoji,
       'action': action,
-    }));
+    }, 'reaction');
   }
 
-  Future<Map<String, List<Map<String, dynamic>>>> getChatReactions(String chatId) async {
+  /// null — запрос не удался (офлайн/ошибка); пустая map — реакций нет.
+  /// Так caller отличает «нет данных» от «сервер не ответил».
+  Future<Map<String, List<Map<String, dynamic>>>?> getChatReactions(
+    String chatId,
+  ) async {
     try {
       final res = await _client.get(
         Uri.parse('$baseUrl/chats/$chatId/reactions'),
         headers: _headers,
-      );
+      ).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['status'] == 'success' && data['reactions'] != null) {
           final raw = data['reactions'] as Map<String, dynamic>;
-          return raw.map((k, v) => MapEntry(k, List<Map<String, dynamic>>.from(v)));
+          return raw.map(
+            (k, v) => MapEntry(k, List<Map<String, dynamic>>.from(v)),
+          );
         }
       }
     } catch (_) {}
-    return {};
+    return null;
   }
 
   // ==================== Files ====================

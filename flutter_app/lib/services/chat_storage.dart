@@ -43,6 +43,7 @@ class ChatStorage {
   static const String _chatsFileName = 'chats.json';
   static const String _profileFileName = 'profile.json';
   static const String _messagesDirName = 'messages';
+  static const String _reactionsDirName = 'reactions';
   static const String _legacyDbName = 'messages_cache.db';
   static const String _legacyChatsFile = 'chats_cache.json';
 
@@ -267,12 +268,77 @@ class ChatStorage {
     await (_writes[chatId] ?? Future<void>.value()).catchError((_) {});
     _writes.remove(chatId);
     _messages.remove(chatId);
+    unawaited(deleteReactions(chatId));
     try {
       final file = await _chatFile(dir, chatId);
       if (await file.exists()) await file.delete();
     } catch (e) {
       print('[ChatStorage] deleteChatMessages error: $e');
     }
+  }
+
+  // ==================== Реакции ====================
+
+  /// Формат на диске: {messageId: {emoji: [userId, ...]}}.
+  static Future<File> _reactionsFile(Directory dir, String chatId) async {
+    final reactionsDir = Directory(p.join(dir.path, _reactionsDirName));
+    if (!await reactionsDir.exists()) {
+      await reactionsDir.create(recursive: true);
+    }
+    return File(p.join(reactionsDir.path, '$chatId.json'));
+  }
+
+  static Future<Map<String, Map<String, List<String>>>> loadReactions(
+    String chatId,
+  ) async {
+    final dir = await _ownerDir();
+    if (dir == null || chatId.isEmpty) return {};
+    try {
+      final file = await _reactionsFile(dir, chatId);
+      if (!await file.exists()) return {};
+      final raw = await file.readAsString();
+      if (raw.isEmpty) return {};
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return {};
+      final result = <String, Map<String, List<String>>>{};
+      decoded.forEach((msgId, emojis) {
+        if (emojis is Map<String, dynamic>) {
+          result[msgId] = emojis.map(
+            (emoji, users) => MapEntry(
+              emoji,
+              users is List ? users.map((u) => u.toString()).toList() : <String>[],
+            ),
+          );
+        }
+      });
+      return result;
+    } catch (e) {
+      print('[ChatStorage] loadReactions error: $e');
+    }
+    return {};
+  }
+
+  static Future<void> saveReactions(
+    String chatId,
+    Map<String, Map<String, Set<String>>> reactions,
+  ) async {
+    if (chatId.isEmpty) return;
+    final dir = await _ownerDir();
+    if (dir == null) return;
+    final data = <String, dynamic>{};
+    reactions.forEach((msgId, emojiMap) {
+      data[msgId] = emojiMap.map((e, users) => MapEntry(e, users.toList()));
+    });
+    await _writeJson(await _reactionsFile(dir, chatId), data);
+  }
+
+  static Future<void> deleteReactions(String chatId) async {
+    final dir = await _ownerDir();
+    if (dir == null) return;
+    try {
+      final file = await _reactionsFile(dir, chatId);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
   }
 
   // ==================== Список чатов ====================

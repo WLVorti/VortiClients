@@ -13,11 +13,13 @@ import 'services/crypto_service.dart';
 import 'services/wallpaper_service.dart';
 import 'services/deep_link_service.dart';
 import 'services/share_receiver.dart';
+import 'utils/avatar_utils.dart';
 import 'l10n/app_localizations.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/share_forward_screen.dart';
+import 'screens/profile_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,9 +54,17 @@ void main() async {
 
   ThemeProvider().setCurrentUser(api.userId);
   WallpaperService().setCurrentUser(api.userId);
+  // Резолвер владельца кэша нужен уже здесь — профиль читается до runApp.
+  ChatStorage.ownerResolver = () => api.userId;
+  // Профиль с диска грузим параллельно с темой — вкладка Account
+  // будет заполнена с первого кадра, без пустых полей.
+  final profilePrime = localInit.then((_) async {
+    final p = await ChatStorage.loadProfile();
+    if (p != null) ProfileScreen.primeProfileCache(p);
+  });
   try {
     // Ключи темы привязаны к userId — грузим только после credentials.
-    await Future.wait([ThemeProvider().loadTheme(), localInit]);
+    await Future.wait([ThemeProvider().loadTheme(), localInit, profilePrime]);
   } catch (e) {
     ApiService.addLog('startup: theme/locale error: $e');
   }
@@ -141,6 +151,24 @@ class _VortiAppState extends State<VortiApp> {
       MuteService.setApi(_api);
     } catch (e) {
       ApiService.addLog('background init: local services error: $e');
+    }
+
+    // Аватар профиля прогреваем заранее — вкладка Account покажет фото
+    // сразу, без цветной подложки.
+    if (_api.token != null) {
+      unawaited(() async {
+        try {
+          final profile = await ChatStorage.loadProfile();
+          final u = profile?.avatarUrl;
+          if (u != null && u.isNotEmpty) {
+            final url = u.startsWith('http') ? u : '${ApiService.baseUrl}$u';
+            await precacheNetworkImage(
+              url,
+              timeout: const Duration(seconds: 5),
+            );
+          }
+        } catch (_) {}
+      }());
     }
 
     // E2EE-ключ нужен до первого отправленного сообщения, но не до входа.

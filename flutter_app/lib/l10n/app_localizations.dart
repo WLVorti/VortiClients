@@ -317,6 +317,7 @@ class AppLocalizations {
   }
 
   String get quickReaction => isRu ? 'Быстрая реакция' : 'Quick reaction';
+  String get chooseReaction => isRu ? 'Выберите реакцию' : 'Choose reaction';
   String get fileSaved => isRu ? 'Файл сохранён' : 'File saved';
   String get fileSaveError => isRu ? 'Не удалось сохранить файл' : 'Failed to save file';
   String get saving => isRu ? 'Сохранение...' : 'Saving...';

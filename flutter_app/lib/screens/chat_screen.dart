@@ -130,6 +130,116 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     '👍', '❤️', '😂', '😮', '😢', '😡',
   ];
 
+  /// Полный набор эмодзи для пикера «+» — обычные unicode-смайлы.
+  /// Колобки добавляются отдельной секцией из kolobokGifs.
+  static const List<String> _allPickerEmojis = [
+    // Улыбки и эмоции
+    '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃',
+    '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙',
+    '🥲', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🫢',
+    '🫣', '🤫', '🤔', '🫡', '🤐', '🤨', '😐', '😑', '😶', '🫥',
+    '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴',
+    '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵',
+    '😵‍💫', '🤯', '🤠', '🥳', '🥸', '😎', '🤓', '🧐', '😕', '🫤',
+    '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '🥹', '😦',
+    '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞',
+    '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿',
+    '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖',
+    // Жесты и люди
+    '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞',
+    '🫰', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️',
+    '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🫶', '👐',
+    '🤲', '🤝', '🙏', '✍️', '💪', '🦾', '🦿', '🦵', '🦶', '👂',
+    '🦻', '👃', '🧠', '🫀', '🫁', '🦷', '🦴', '👀', '👁️', '👅',
+    '👄', '💋', '🩸',
+    // Сердца и символы
+    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔',
+    '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '♥️',
+    '💯', '💢', '💥', '💫', '💦', '💨', '🕳️', '💬', '🗨️', '🗯️',
+    '💭', '💤', '👁️‍🗨️', '🔇', '🔈', '🔉', '🔊', '📢', '📣', '🔔',
+    '🔕', '🎵', '🎶', '➕', '➖', '➗', '✖️', '🟰', '♾️', '‼️',
+    '⁉️', '❓', '❔', '❕', '❗', '〰️', '💱', '💲', '⚠️', '🚫',
+    '✅', '❎', '⭕', '❌', '🔴', '🟠', '🟡', '🟢', '🔵', '🟣',
+    // Животные
+    '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯',
+    '🦁', '🐮', '🐷', '🐸', '🐵', '🙈', '🙉', '🙊', '🐔', '🐧',
+    '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄',
+    '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🦟', '🦗', '🕷️', '🦂',
+    '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀',
+    '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆',
+    '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘',
+    // Еда и напитки
+    '🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐',
+    '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🥑', '🥦',
+    '🥬', '🥒', '🌶️', '🫑', '🌽', '🥕', '🫒', '🧄', '🧅', '🥔',
+    '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳', '🧈',
+    '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🌭', '🍔', '🍟', '🍕',
+    '🥪', '🥙', '🧆', '🌮', '🌯', '🫔', '🥗', '🥘', '🫕', '🥫',
+    '🍝', '🍜', '🍲', '🍛', '🍣', '🍱', '🥟', '🦪', '🍤', '🍙',
+    '🍚', '🍘', '🍥', '🥠', '🥮', '🍢', '🍡', '🍧', '🍨', '🍦',
+    '🥧', '🧁', '🍰', '🎂', '🍮', '🍭', '🍬', '🍫', '🍿', '🍩',
+    '🍪', '🌰', '🥜', '🍯', '🥛', '🍼', '☕', '🫖', '🍵', '🧃',
+    '🥤', '🧋', '🍶', '🍺', '🍻', '🥂', '🍷', '🥃', '🍸', '🍹',
+    // Активности и предметы
+    '⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱',
+    '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳',
+    '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷',
+    '⛸️', '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️', '🤼', '🤸', '⛹️',
+    '🤺', '🤾', '🏌️', '🏇', '🧘', '🏄', '🏊', '🤽', '🚣', '🧗',
+    '🚵', '🚴', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️', '🎗️', '🎫',
+    '🎟️', '🎪', '🤹', '🎭', '🩰', '🎨', '🎬', '🎤', '🎧', '🎼',
+    '🎹', '🥁', '🪘', '🎷', '🎺', '🪗', '🎸', '🪕', '🎻', '🎲',
+    '♟️', '🎯', '🎳', '🎮', '🎰', '🧩',
+    // Путешествия и места
+    '🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐',
+    '🛻', '🚚', '🚛', '🚜', '🦯', '🦽', '🦼', '🛴', '🚲', '🛵',
+    '🏍️', '🛺', '🚨', '🚔', '🚍', '🚘', '🚖', '🚡', '🚠', '🚟',
+    '🚃', '🚋', '🚞', '🚝', '🚄', '🚅', '🚈', '🚂', '🚆', '🚇',
+    '🚊', '🚉', '✈️', '🛫', '🛬', '🛩️', '💺', '🛰️', '🚀', '🛸',
+    '🚁', '🛶', '⛵', '🚤', '🛥️', '🛳️', '⛴️', '🚢', '⚓', '🪝',
+    '⛽', '🚧', '🚦', '🚥', '🚏', '🗺️', '🗿', '🗽', '🗼', '🏰',
+    '🏯', '🏟️', '🎡', '🎢', '🎠', '⛲', '⛱️', '🏖️', '🏝️', '🏜️',
+    '🌋', '⛰️', '🏔️', '🗻', '🏕️', '🏠', '🏡', '🏘️', '🏚️', '🏗️',
+    '🏭', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏪', '🏫',
+    '🏩', '💒', '🏛️', '⛪', '🕌', '🛕', '🕍', '🕋', '⛩️', '🛤️',
+    '🛣️', '🗾', '🎑', '🏞️', '🌅', '🌄', '🌠', '🎇', '🎆', '🌇',
+    '🌆', '🏙️', '🌃', '🌌', '🌉', '🌁',
+    // Природа
+    '🌸', '💐', '🌷', '🌹', '🥀', '🌺', '🌻', '🌼', '🌱', '🌲',
+    '🌳', '🌴', '🌵', '🌾', '🌿', '☘️', '🍀', '🍃', '🍂', '🍁',
+    '🪴', '🎋', '🎍', '🪹', '🪺', '🍄', '🐚', '🪨', '🌾', '💐',
+    '🌞', '🌝', '🌛', '🌜', '🌚', '🌕', '🌖', '🌗', '🌘', '🌑',
+    '🌒', '🌓', '🌔', '🌙', '🌎', '🌍', '🌏', '🪐', '💫', '⭐',
+    '🌟', '✨', '⚡', '☄️', '💥', '🔥', '🌪️', '🌈', '☀️', '🌤️',
+    '⛅', '🌥️', '☁️', '🌦️', '🌧️', '⛈️', '🌩️', '🌨️', '❄️', '☃️',
+    '⛄', '🌬️', '💨', '🌊', '💧', '💦', '☔', '🫧', '🌂', '☂️',
+    '☔', '⛱️', '⚡', '❄️', '🔥', '💧',
+    // Объекты
+    '⌚', '📱', '📲', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '🖲️', '🕹️',
+    '🗜️', '💽', '💾', '💿', '📀', '📼', '📷', '📸', '📹', '🎥',
+    '📽️', '🎞️', '📞', '☎️', '📟', '📠', '📺', '📻', '🎙️', '🎚️',
+    '🎛️', '🧭', '⏱️', '⏲️', '⏰', '🕰️', '⌛', '⏳', '📡', '🔋',
+    '🔌', '💡', '🔦', '🕯️', '🪔', '🧯', '🛢️', '💸', '💵', '💴',
+    '💶', '💷', '🪙', '💰', '💳', '💎', '⚖️', '🪜', '🧰', '🪛',
+    '🔧', '🔨', '⚒️', '🛠️', '⛏️', '🪚', '🔩', '⚙️', '🪤', '🧱',
+    '⛓️', '🧲', '🔫', '💣', '🧨', '🪓', '🔪', '🗡️', '⚔️', '🛡️',
+    '🚬', '⚰️', '🪦', '⚱️', '🏺', '🔮', '📿', '🧿', '💈', '⚗️',
+    '🔭', '🔬', '🕳️', '🩹', '🩺', '💊', '💉', '🩸', '🧬', '🦠',
+    '🧫', '🧪', '🌡️', '🧹', '🪠', '🧺', '🧻', '🚽', '🚰', '🚿',
+    '🛁', '🛀', '🧼', '🪥', '🪒', '🧽', '🪣', '🧴', '🛎️', '🔑',
+    '🗝️', '🚪', '🪑', '🛋️', '🛏️', '🛌', '🧸', '🪆', '🖼️', '🪞',
+    '🪟', '🛍️', '🛒', '🎁', '🎈', '🎏', '🎀', '🪄', '🪅', '🎊',
+    '🎉', '🎎', '🏮', '🎐', '🧧', '✉️', '📩', '📨', '📧', '💌',
+    '📥', '📤', '📦', '🏷️', '🪧', '📪', '📫', '📬', '📭', '📮',
+    '📯', '📜', '📃', '📄', '📑', '🧾', '📊', '📈', '📉', '🗒️',
+    '🗓️', '📆', '📅', '🗑️', '📇', '🗃️', '🗳️', '🗄️', '📋', '📁',
+    '📂', '🗂️', '🗞️', '📰', '📓', '📔', '📒', '📕', '📗', '📘',
+    '📙', '📚', '📖', '🔖', '🧷', '🔗', '📎', '🖇️', '📐', '📏',
+    '🧮', '📌', '📍', '✂️', '🖊️', '🖋️', '✒️', '🖌️', '🖍️', '📝',
+    '✏️', '🔍', '🔎', '🔏', '🔐', '🔒', '🔓', '❤️‍🔥', '❤️‍🩹',
+    '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟',
+  ];
+
   static const List<String> _kolobokGifs = kolobokGifs;
 
   String _quickReactionEmoji = '❤️';
@@ -301,8 +411,31 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Инкрементируется при любом локальном/входящем изменении реакций.
+  /// Нужен, чтобы запоздалый ответ _loadReactions не затёр optimistic-реакции.
+  int _reactionsVersion = 0;
+
   Future<void> _loadReactions() async {
+    // Сначала кэш с диска — реакции видны сразу, в т.ч. офлайн.
+    final cached = await ChatStorage.loadReactions(widget.chatId);
+    if (cached.isNotEmpty && mounted) {
+      setState(() {
+        _messageReactions.clear();
+        cached.forEach((msgId, emojiMap) {
+          _messageReactions[msgId] = emojiMap.map(
+            (emoji, users) => MapEntry(emoji, users.toSet()),
+          );
+        });
+      });
+    }
+    final version = _reactionsVersion;
     final reactions = await widget.api.getChatReactions(widget.chatId);
+    // null — сервер не ответил: оставляем кэш с диска.
+    // version сменился — за время запроса реакции уже менялись
+    // (свои клики или WS-бродкаст), не затираем их устаревшим ответом.
+    if (reactions == null || !mounted || version != _reactionsVersion) {
+      return;
+    }
     setState(() {
       _messageReactions.clear();
       for (final entry in reactions.entries) {
@@ -317,6 +450,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _messageReactions[msgId] = emojiMap;
       }
     });
+    unawaited(ChatStorage.saveReactions(widget.chatId, _messageReactions));
+  }
+
+  /// Пишет текущие реакции чата на диск — вызывается после каждого изменения.
+  void _persistReactions() {
+    unawaited(ChatStorage.saveReactions(widget.chatId, _messageReactions));
   }
 
   Future<void> _saveDraft() async {
@@ -859,6 +998,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final emoji = msg['emoji'] as String;
     final action = msg['action'] as String;
 
+    _reactionsVersion++;
     setState(() {
       final emojiMap = _messageReactions.putIfAbsent(messageId, () => {});
       if (action == 'add') {
@@ -872,6 +1012,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
       }
     });
+    _persistReactions();
   }
 
   Future<void> _loadMessages() async {
@@ -2723,20 +2864,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               final count = e.value.length;
               final iReacted = e.value.contains(_currentUserId);
               return GestureDetector(
-                onTap: () {
-                  final action = iReacted ? 'remove' : 'add';
-                  widget.api.sendReaction(msg.id, emoji, action);
-                  setState(() {
-                    final emojiMap = _messageReactions.putIfAbsent(msg.id, () => {});
-                    if (iReacted) {
-                      emojiMap[emoji]?.remove(_currentUserId);
-                      if (emojiMap[emoji]?.isEmpty == true) emojiMap.remove(emoji);
-                      if (emojiMap.isEmpty) _messageReactions.remove(msg.id);
-                    } else {
-                      emojiMap.putIfAbsent(emoji, () => {}).add(_currentUserId);
-                    }
-                  });
-                },
+                onTap: () => _toggleReaction(msg, emoji),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
@@ -2745,14 +2873,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(
-                    '$emoji $count',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: iReacted
-                          ? Theme.of(context).colorScheme.onPrimaryContainer
-                          : null,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _reactionGlyph(emoji, size: 14),
+                      const SizedBox(width: 3),
+                      Text(
+                        '$count',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: iReacted
+                              ? Theme.of(context).colorScheme.onPrimaryContainer
+                              : null,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -2763,14 +2898,29 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _sendQuickReaction(Message msg) {
+  /// Рисует реакцию: колобок-маркер — GIF-картинкой, обычный эмодзи — текстом.
+  Widget _reactionGlyph(String value, {double size = 24}) {
+    final asset = kolobokAssetForMarker(value);
+    if (asset != null) {
+      return Image.asset(
+        'assets/mini/$asset.gif',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.low,
+        gaplessPlayback: true,
+      );
+    }
+    return Text(value, style: TextStyle(fontSize: size));
+  }
+
+  /// Единая точка переключения реакции: WS + оптимистичный UI + кэш на диск.
+  void _toggleReaction(Message msg, String emoji) {
     if (msg.isDeleted || msg.text == '[deleted]') return;
-    final emoji = _quickReactionEmoji;
-    final reacted = _messageReactions[msg.id]
-            ?.containsKey(emoji) == true &&
-        _messageReactions[msg.id]![emoji]!.contains(_currentUserId);
-    final action = reacted ? 'remove' : 'add';
-    widget.api.sendReaction(msg.id, emoji, action);
+    _reactionsVersion++;
+    final reacted =
+        _messageReactions[msg.id]?[emoji]?.contains(_currentUserId) ?? false;
+    widget.api.sendReaction(msg.id, emoji, reacted ? 'remove' : 'add');
     setState(() {
       final emojiMap = _messageReactions.putIfAbsent(msg.id, () => {});
       if (reacted) {
@@ -2781,6 +2931,114 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         emojiMap.putIfAbsent(emoji, () => {}).add(_currentUserId);
       }
     });
+    _persistReactions();
+  }
+
+  /// Полный пикер реакций: unicode-эмодзи + колобки. Выбранное значение
+  /// возвращается через onPick (колобок — маркер ::kolobok:name::).
+  void _showEmojiPickerSheet({required void Function(String) onPick}) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (ctx) {
+        Widget cell(String value, {bool isKolobok = false, int? kolobokIndex}) {
+          return GestureDetector(
+            onTap: () {
+              Navigator.pop(ctx);
+              // Колобок сохраняем компактным маркером :kN: — он проходит
+              // серверный лимит emoji <= 10 символов и так же кодируется
+              // в текстах сообщений. ::kolobok:name:: слишком длинный.
+              onPick(isKolobok ? ':k$kolobokIndex:' : value);
+            },
+            child: Container(
+              alignment: Alignment.center,
+              padding: const EdgeInsets.all(4),
+              child: isKolobok
+                  ? Image.asset(
+                      'assets/mini/$value.gif',
+                      width: 30,
+                      height: 30,
+                      fit: BoxFit.contain,
+                      gaplessPlayback: true,
+                    )
+                  : Text(value, style: const TextStyle(fontSize: 26)),
+            ),
+          );
+        }
+
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(ctx).size.height * 0.65,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    AppLocalizations.of(context).chooseReaction,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        flex: 4,
+                        child: GridView.count(
+                          crossAxisCount: 8,
+                          children: _allPickerEmojis
+                              .map((e) => cell(e))
+                              .toList(),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        flex: 1,
+                        child: GridView.count(
+                          crossAxisCount: 8,
+                          children: _kolobokGifs.indexed
+                              .map(
+                                (e) => cell(
+                                  e.$2,
+                                  isKolobok: true,
+                                  kolobokIndex: e.$1,
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Кнопка «+» в конце ряда быстрых реакций — открывает полный пикер.
+  GestureDetector _plusReactionButton({required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Icon(
+          Icons.add,
+          size: 24,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  void _sendQuickReaction(Message msg) {
+    _toggleReaction(msg, _quickReactionEmoji);
   }
 
   void _showThreeDotMenu() {
@@ -2848,7 +3106,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         _threeDotAction(
                           icon: Icons.emoji_emotions_outlined,
                           label: l10n.quickReaction,
-                          trailing: Text(_quickReactionEmoji, style: const TextStyle(fontSize: 20)),
+                          trailing: _reactionGlyph(_quickReactionEmoji, size: 20),
                           onTap: () { entry.remove(); _showQuickReactionPicker(); },
                         ),
                       ],
@@ -3335,7 +3593,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       child: Text(emoji, style: const TextStyle(fontSize: 32)),
                     ),
                   );
-                }).toList(),
+                }).toList()
+                  ..add(
+                    _plusReactionButton(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showEmojiPickerSheet(
+                          onPick: _setQuickReactionForChat,
+                        );
+                      },
+                    ),
+                  ),
               ),
               ),
             ),
@@ -3951,18 +4219,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             return GestureDetector(
                               onTap: () {
                                 entry.remove();
-                                final action = reacted ? 'remove' : 'add';
-                                widget.api.sendReaction(msg.id, emoji, action);
-                                setState(() {
-                                  final emojiMap = _messageReactions.putIfAbsent(msg.id, () => {});
-                                  if (reacted) {
-                                    emojiMap[emoji]?.remove(_currentUserId);
-                                    if (emojiMap[emoji]?.isEmpty == true) emojiMap.remove(emoji);
-                                    if (emojiMap.isEmpty) _messageReactions.remove(msg.id);
-                                  } else {
-                                    emojiMap.putIfAbsent(emoji, () => {}).add(_currentUserId);
-                                  }
-                                });
+                                _toggleReaction(msg, emoji);
                               },
                               child: Container(
                                 padding: const EdgeInsets.all(6),
@@ -3972,10 +4229,36 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                       : Colors.transparent,
                                   borderRadius: BorderRadius.circular(16),
                                 ),
-                                child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                                child: _reactionGlyph(emoji, size: 24),
                               ),
                             );
-                          }).toList(),
+                          }).toList()
+                            ..add(
+                              GestureDetector(
+                                onTap: () {
+                                  // Попап — OverlayEntry поверх шторки:
+                                  // убираем его ДО открытия пикера.
+                                  entry.remove();
+                                  _showEmojiPickerSheet(
+                                    onPick: (emoji) {
+                                      _toggleReaction(msg, emoji);
+                                    },
+                                  );
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Icon(
+                                    Icons.add,
+                                    size: 22,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ),
                         ),
                       ),
                       Divider(
